@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => ({
     host: "0.0.0.0",
     port: 3005,
     proxy: {
-      '/api': 'https://zspgc-attend-scan-1963a225-main-6.onrender.com'
+      '/api': 'http://localhost:3002'
     },
     hmr: {
       overlay: false,

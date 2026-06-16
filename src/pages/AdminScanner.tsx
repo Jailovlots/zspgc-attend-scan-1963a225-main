@@ -11,6 +11,7 @@ import QrScannerComponent from "@/components/QrScannerComponent";
 import { toast } from "sonner";
 import { getEvents, parseEventQrToken, type SchoolEvent } from "@/data/events";
 import { getAllStudents, getSession, getAttendanceRecords, saveAttendanceRecord, clearAttendanceRecords, deleteAttendanceRecords, getSystemSettings, type AttendanceRecord, type StudentUser } from "@/lib/auth";
+import { getSyncedTime, syncTimeWithServer } from "@/lib/timeSync";
 import { Checkbox } from "@/components/ui/checkbox";
 import { exportToCsv } from "@/lib/exportUtils";
 import {
@@ -75,9 +76,23 @@ const AdminScanner = () => {
       return;
     }
 
+    const fetchAttendance = async () => {
+      try {
+        const savedRecords = await getAttendanceRecords();
+        setScannedRecords(savedRecords);
+        setScanCount(savedRecords.length);
+        if (savedRecords.length > 0) setLastScan(savedRecords[0]);
+      } catch (err) {
+        console.error("Failed to poll attendance records:", err);
+      }
+    };
+
     const init = async () => {
       setIsLoading(true);
       try {
+        // Synchronize local time with server to support strict 10s token expiration
+        await syncTimeWithServer();
+
         // Load system settings from the server (centralized)
         const settings = await getSystemSettings();
         if (settings) {
@@ -129,6 +144,10 @@ const AdminScanner = () => {
       }
     };
     init();
+
+    // Poll server every 4 seconds to sync scanner entries from phone and other devices
+    const interval = setInterval(fetchAttendance, 4000);
+    return () => clearInterval(interval);
   }, [session, navigate]);
 
   const filteredRecords = useMemo(
@@ -208,15 +227,15 @@ const AdminScanner = () => {
       const studentId = parsed?.studentId ?? (legacyMatch ? legacyMatch[1] : null);
       const eventId = parsed?.eventId ?? "EVT-GENERAL";
 
-      // Security Check: 15 second expiry for new tokens
+      // Security Check: 10 second expiry for new tokens with clock synchronization
       if (parsed && parsed.timestamp) {
-        const now = Date.now();
+        const now = getSyncedTime();
         const ageInSeconds = (now - parsed.timestamp) / 1000;
 
-        if (ageInSeconds > 15) {
+        if (ageInSeconds > 10 || ageInSeconds < -2) {
           playErrorBeep();
           toast.error("QR Code Expired", {
-            description: `This code was generated ${Math.round(ageInSeconds)}s ago. Please ask the student to show a new one.`,
+            description: `This code was generated ${Math.round(Math.abs(ageInSeconds))}s ago. Please ask the student to refresh their QR code.`,
           });
           return;
         }
@@ -243,6 +262,7 @@ const AdminScanner = () => {
       const thresholdMinutes = parseTimeStringToMinutes(systemSettings.lateThreshold) || 480; // Default 8:00 AM
       const status: "Present" | "Late" = currentMinutes >= thresholdMinutes ? "Late" : "Present";
 
+      console.log("[Scanner] Scanning QR code payload:", decodedText);
       const student = studentId ? findStudent(studentId) : null;
 
       if (studentId && student) {
@@ -260,8 +280,8 @@ const AdminScanner = () => {
           timestamp: now.getTime(),
         };
 
-        const success = await saveAttendanceRecord(record);
-        if (success) {
+        const result = await saveAttendanceRecord(record);
+        if (result.ok) {
           playBeep();
           setScannedRecords((prev) => [record, ...prev]);
           setLastScan(record);
@@ -270,8 +290,13 @@ const AdminScanner = () => {
           toast.success(`${status === "Present" ? "✅" : "⏰"} ${student.name}`, {
             description: `${eventName} • ${student.section} — ${status} at ${timeStr}`,
           });
+          console.log("[Scanner] Saved record successfully:", record);
         } else {
-          toast.error("Database connection error. Try again.");
+          playErrorBeep();
+          toast.error("Database Save Failed", {
+            description: result.error || "Could not save the attendance record.",
+          });
+          console.error("[Scanner] Database save failed:", result.error);
         }
       } else {
         playErrorBeep();
@@ -280,6 +305,7 @@ const AdminScanner = () => {
             ? `Student ID ${studentId} not found in the system.`
             : "Invalid QR code format.",
         });
+        console.warn("[Scanner] Unknown student scanned:", studentId);
       }
     },
     [scannedRecords, playBeep, playErrorBeep, events, allStudents, systemSettings.lateThreshold]

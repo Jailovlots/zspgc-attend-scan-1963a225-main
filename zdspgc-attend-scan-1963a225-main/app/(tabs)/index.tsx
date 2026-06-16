@@ -1,198 +1,411 @@
 import { useCameraPermissions, CameraView, BarcodeScanningResult } from 'expo-camera';
-import React, { useRef, useState } from 'react';
-import { Platform, SafeAreaView, StyleSheet, View, Text, TouchableOpacity, Alert } from 'react-native';
-import { WebView } from 'react-native-webview';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
+import {
+  Platform, SafeAreaView, StyleSheet, View, Text, TouchableOpacity,
+  ActivityIndicator, StatusBar,
+} from 'react-native';
+import { WebView, WebViewMessageEvent } from 'react-native-webview';
+import Constants from 'expo-constants';
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve the web server URI.
+ * On a physical device Expo sets hostUri to "192.168.x.x:8081" (Metro port).
+ * Our web app runs on port 3005 on the SAME machine, so we swap the port.
+ */
+const getTargetUri = (): string => {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined') {
+      const { protocol, hostname, port } = window.location;
+      return `${protocol}//${hostname}:${port || '3005'}`;
+    }
+    return 'http://localhost:3005';
+  }
+
+  // Try to pull the dev machine's LAN IP from Expo's hostUri
+  const hostUri = Constants.expoConfig?.hostUri ?? '';
+  const hostIp = hostUri.split(':')[0];
+
+  if (hostIp && hostIp !== 'localhost' && hostIp !== '127.0.0.1') {
+    return `http://${hostIp}:3005`;
+  }
+
+  // Android emulator loopback alias
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:3005';
+  }
+
+  return 'http://localhost:3005';
+};
+
+// Escape a string for safe use inside a JS template literal injected via injectJavaScript
+const escapeForJs = (str: string): string =>
+  str.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function HomeScreen() {
+  const TARGET_URI = getTargetUri();
+
   const [permission, requestPermission] = useCameraPermissions();
   const [useNativeScanner, setUseNativeScanner] = useState(false);
   const [bridgeReady, setBridgeReady] = useState(false);
+  const [webViewError, setWebViewError] = useState<string | null>(null);
+  const [webViewLoading, setWebViewLoading] = useState(true);
+
   const webViewRef = useRef<WebView>(null);
+  // Cooldown ref – prevents the same QR being sent multiple times in quick succession
+  const scanCooldownRef = useRef(false);
 
-  const targetUri = 'https://zspgc-attend-scan-1963a225-main-6.onrender.com';
-
-  React.useEffect(() => {
-    const checkPermissions = async () => {
-      if (permission === null || (!permission.granted && permission.canAskAgain)) {
+  // ── Request camera permissions on first render ──────────────────────────
+  useEffect(() => {
+    (async () => {
+      if (!permission?.granted && permission?.canAskAgain !== false) {
         await requestPermission();
       }
-    };
-    checkPermissions();
-  }, [permission, requestPermission]);
+    })();
+  }, []); // intentionally run only once
 
-  React.useEffect(() => {
-    const checkServer = async () => {
-      try {
-        const res = await fetch(`${targetUri}/api/health`);
-        const data = await res.json();
-      } catch (error) {
-        console.log("Error:", error);
-        Alert.alert("Network error, please try again");
+  // ── Handle a barcode detected by the native camera ──────────────────────
+  const onBarcodeScanned = useCallback((result: BarcodeScanningResult) => {
+    if (!useNativeScanner || !webViewRef.current) return;
+    if (scanCooldownRef.current) return; // ignore repeated frames
+
+    const data = result.data;
+    if (!data) return;
+
+    // Activate cooldown — reset after 3 s so the admin can scan the next student
+    scanCooldownRef.current = true;
+    setTimeout(() => {
+      scanCooldownRef.current = false;
+    }, 3000);
+
+    // Close the native scanner overlay
+    setUseNativeScanner(false);
+
+    // Safely inject the scan result into the web app's window event system
+    const safeData = escapeForJs(data);
+    const script = `
+      (function() {
+        try {
+          window.dispatchEvent(new CustomEvent('nativeScan', { detail: \`${safeData}\` }));
+        } catch(e) {
+          console.error('nativeScan dispatch error:', e);
+        }
+      })();
+      true; // required for Android injectJavaScript
+    `;
+    webViewRef.current.injectJavaScript(script);
+  }, [useNativeScanner]);
+
+  // ── Handle messages from the WebView (React app → native) ───────────────
+  const onWebViewMessage = useCallback((event: WebViewMessageEvent) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+
+      switch (data.type) {
+        case 'START_NATIVE_SCAN':
+          // Only open the native scanner if we have permission
+          if (permission?.granted) {
+            scanCooldownRef.current = false; // reset cooldown for new scan session
+            setUseNativeScanner(true);
+          } else {
+            requestPermission();
+          }
+          break;
+
+        case 'PING':
+          setBridgeReady(true);
+          // Acknowledge the ping so the web app knows native bridge is live
+          webViewRef.current?.injectJavaScript(`
+            (function() {
+              if (window.ReactNativeWebView) {
+                // signal bridge is confirmed
+                window.__nativeBridgeReady = true;
+              }
+            })(); true;
+          `);
+          break;
+
+        default:
+          console.log('[Bridge] Unknown message type:', data.type);
       }
-    };
-    checkServer();
-  }, []);
-
-  const onBarcodeScanned = (result: BarcodeScanningResult) => {
-    if (useNativeScanner && webViewRef.current) {
-      console.log("Barcode scanned natively:", result.data);
-      // Inject the scan result into the web app
-      const script = `window.dispatchEvent(new CustomEvent('nativeScan', { detail: '${result.data}' }));`;
-      webViewRef.current.injectJavaScript(script);
-      setUseNativeScanner(false); // Switch back to WebView after successful scan
+    } catch (e) {
+      console.error('[Bridge] Failed to parse WebView message:', e);
     }
-  };
+  }, [permission?.granted, requestPermission]);
 
+  // ── Permission not yet determined ───────────────────────────────────────
+  if (permission === null) {
+    return (
+      <SafeAreaView style={styles.centeredContainer}>
+        <ActivityIndicator size="large" color="#EAB308" />
+        <Text style={styles.infoText}>Checking camera permissions…</Text>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Camera permanently denied ────────────────────────────────────────────
+  if (!permission.granted && !permission.canAskAgain) {
+    return (
+      <SafeAreaView style={styles.centeredContainer}>
+        <Text style={styles.errorTitle}>📷 Camera Access Denied</Text>
+        <Text style={styles.infoText}>
+          Camera permission was denied permanently. Please enable it in your device Settings → Apps → AttendWise → Permissions.
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Web platform — just render an iframe ────────────────────────────────
   if (Platform.OS === 'web') {
     return (
       <View style={styles.container}>
         <iframe
-          src={targetUri}
+          src={TARGET_URI}
           style={{ width: '100%', height: '100%', border: 'none' }}
-          title="WebView Content"
+          title="AttendWise"
           allow="camera; microphone"
         />
       </View>
     );
   }
 
-  // Permission UI
-  if (permission && !permission.granted) {
-    return (
-      <View style={styles.permissionContainer}>
-        <Text style={styles.permissionText}>Camera access is required for scanning.</Text>
-        <TouchableOpacity style={styles.button} onPress={requestPermission}>
-          <Text style={styles.buttonText}>Grant Permission</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container}>
-      {/* Bridge Status Indicator */}
-      <View style={[styles.statusDot, { backgroundColor: bridgeReady ? '#22C55E' : '#EF4444' }]} />
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-      {useNativeScanner ? (
-        <View style={styles.cameraContainer}>
+      {/* ── Bridge status indicator (small dot, top-right) ─────────────── */}
+      <View
+        style={[
+          styles.statusDot,
+          { backgroundColor: bridgeReady ? '#22C55E' : '#94A3B8' },
+        ]}
+      />
+
+      {/* ── Native camera overlay (shown when scanning) ─────────────────── */}
+      {useNativeScanner && (
+        <View style={StyleSheet.absoluteFillObject}>
           <CameraView
             style={StyleSheet.absoluteFill}
             facing="back"
             onBarcodeScanned={onBarcodeScanned}
-            barcodeScannerSettings={{
-              barcodeTypes: ["qr"],
-            }}
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
           />
-          <View style={styles.overlay}>
-            <Text style={styles.overlayText}>Align QR Code within the frame</Text>
+
+          {/* Viewfinder guide */}
+          <View style={styles.scannerOverlay}>
+            <Text style={styles.scannerHint}>Align the student's QR code within the frame</Text>
+            <View style={styles.viewfinderBox} />
             <TouchableOpacity
-              style={[styles.button, styles.cancelButton]}
-              onPress={() => setUseNativeScanner(false)}
+              style={styles.cancelBtn}
+              onPress={() => {
+                scanCooldownRef.current = false;
+                setUseNativeScanner(false);
+              }}
+              activeOpacity={0.8}
             >
-              <Text style={styles.buttonText}>Cancel Native Scan</Text>
+              <Text style={styles.cancelBtnText}>✕  Cancel Scan</Text>
             </TouchableOpacity>
           </View>
         </View>
-      ) : null}
+      )}
 
+      {/* ── WebView (the React web app) ──────────────────────────────────── */}
       <WebView
         ref={webViewRef}
-        source={{ uri: targetUri }}
-        style={[styles.webview, useNativeScanner ? { height: 0, opacity: 0 } : {}]}
+        source={{ uri: TARGET_URI }}
+        style={[
+          styles.webview,
+          // Hide (but keep alive) while native scanner is open
+          useNativeScanner ? { height: 0, width: 0, opacity: 0 } : {},
+        ]}
+        // ── Core settings ──────────────────────────────────
         javaScriptEnabled={true}
         domStorageEnabled={true}
-        startInLoadingState={true}
         allowsInlineMediaPlayback={true}
         mediaPlaybackRequiresUserAction={false}
         originWhitelist={['*']}
-        onMessage={(event) => {
-          console.log("Message from WebView:", event.nativeEvent.data);
-          try {
-            const data = JSON.parse(event.nativeEvent.data);
-            if (data.type === 'START_NATIVE_SCAN') {
-              setUseNativeScanner(true);
-            } else if (data.type === 'PING') {
-              setBridgeReady(true);
-            }
-          } catch (e) {
-            console.error("WebView message error:", e);
+        mixedContentMode="always"
+        // ── Lifecycle ──────────────────────────────────────
+        startInLoadingState={true}
+        renderLoading={() => (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color="#EAB308" />
+            <Text style={styles.infoText}>Loading AttendWise…</Text>
+            <Text style={styles.uriText}>{TARGET_URI}</Text>
+          </View>
+        )}
+        onLoadEnd={() => setWebViewLoading(false)}
+        onError={(syntheticEvent) => {
+          const { nativeEvent } = syntheticEvent;
+          console.error('[WebView] Error:', nativeEvent);
+          setWebViewError(
+            `Could not reach the web server.\n\nURL: ${TARGET_URI}\n\nMake sure the web server (npm run dev) is running on your computer and that your phone is on the same Wi-Fi network.`
+          );
+        }}
+        onHttpError={(syntheticEvent) => {
+          const { nativeEvent } = syntheticEvent;
+          if (nativeEvent.statusCode >= 500) {
+            console.error('[WebView] HTTP error:', nativeEvent.statusCode);
           }
         }}
-        // @ts-expect-error onPermissionRequest is missing from WebView types but valid for Android
-        onPermissionRequest={(event: any) => {
-          event.grant();
-        }}
-        mixedContentMode="always"
+        // ── Message bridge ─────────────────────────────────
+        onMessage={onWebViewMessage}
+        // ── Android camera permission passthrough ──────────
+        // @ts-expect-error onPermissionRequest is valid on Android
+        onPermissionRequest={(event: any) => event.grant()}
       />
+
+      {/* ── WebView error overlay ────────────────────────────────────────── */}
+      {webViewError && (
+        <View style={styles.errorOverlay}>
+          <Text style={styles.errorTitle}>⚠️ Connection Error</Text>
+          <Text style={styles.errorMessage}>{webViewError}</Text>
+          <TouchableOpacity
+            style={styles.retryBtn}
+            onPress={() => {
+              setWebViewError(null);
+              setWebViewLoading(true);
+              webViewRef.current?.reload();
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    paddingTop: Platform.OS === 'android' ? 30 : 0,
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
   },
-  statusDot: {
-    position: 'absolute',
-    top: Platform.OS === 'android' ? 40 : 10,
-    right: 10,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    zIndex: 9999,
-    elevation: 9999,
-  },
-  webview: {
-    flex: 1,
-  },
-  permissionContainer: {
+  centeredContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 28,
     backgroundColor: '#fff',
   },
-  permissionText: {
-    textAlign: 'center',
-    marginBottom: 20,
-    fontSize: 16,
-    color: '#333',
-  },
-  cameraContainer: {
+  webview: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#fff',
   },
-  overlay: {
+  statusDot: {
+    position: 'absolute',
+    top: (Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 10) + 6,
+    right: 12,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    zIndex: 9999,
+    elevation: 9999,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
+  },
+
+  // ── Scanner overlay ────────────────────────────────────────────────────
+  scannerOverlay: {
     flex: 1,
-    backgroundColor: 'transparent',
-    justifyContent: 'flex-end',
     alignItems: 'center',
-    paddingBottom: 50,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    gap: 24,
+    padding: 28,
   },
-  overlayText: {
+  scannerHint: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: -1, height: 1 },
-    textShadowRadius: 10
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
-  button: {
-    backgroundColor: '#EAB308', // Gold color from palette
-    paddingHorizontal: 25,
+  viewfinderBox: {
+    width: 240,
+    height: 240,
+    borderWidth: 3,
+    borderColor: '#EAB308',
+    borderRadius: 16,
+    backgroundColor: 'transparent',
+  },
+  cancelBtn: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 10,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  cancelBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
+    letterSpacing: 0.3,
+  },
+
+  // ── Loading / error UI ────────────────────────────────────────────────
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  uriText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  errorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 28,
+    gap: 16,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1E293B',
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  retryBtn: {
+    backgroundColor: '#EAB308',
+    paddingHorizontal: 32,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 10,
+    marginTop: 8,
     elevation: 3,
   },
-  cancelButton: {
-    backgroundColor: '#EF4444', // Destructive red
-  },
-  buttonText: {
+  retryBtnText: {
     color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14,
+    fontWeight: '700',
+    fontSize: 15,
   },
 });

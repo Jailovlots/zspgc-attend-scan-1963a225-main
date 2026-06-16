@@ -21,12 +21,14 @@ import NotFound from "./pages/NotFound";
 
 import { useEffect } from "react";
 import { migrateLocalStorageToServer } from "./lib/auth";
+import { syncTimeWithServer } from "./lib/timeSync";
 
 const queryClient = new QueryClient();
 
 const App = () => {
   useEffect(() => {
     migrateLocalStorageToServer();
+    syncTimeWithServer();
   }, []);
 
   return (

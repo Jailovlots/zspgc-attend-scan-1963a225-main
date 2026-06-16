@@ -11,13 +11,27 @@ if (redisUrl.includes('upstash.io') && redisUrl.startsWith('redis://')) {
 }
 
 const redisClient = createClient({
-  url: redisUrl || undefined
+  url: redisUrl || undefined,
+  socket: {
+    reconnectStrategy: (retries) => {
+      if (retries >= 2) {
+        return false;
+      }
+      return 1000;
+    }
+  }
 });
 
 redisClient.on("error", (err) => {
-  console.error("Redis Error:", err);
+  // Silent or single line warning instead of verbose trace
+  console.warn("Redis Client Warning:", err.message);
 });
 
-await redisClient.connect();
+try {
+  await redisClient.connect();
+  console.log("Connected to Redis successfully");
+} catch (err) {
+  console.warn("Failed to connect to Redis. Running without active Redis client:", err.message);
+}
 
 export default redisClient;

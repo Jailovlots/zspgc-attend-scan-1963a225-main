@@ -75,8 +75,8 @@ const Index = () => {
               <span className="text-gold text-sm font-medium">QR-Powered Attendance</span>
             </div>
             <h1 className="text-4xl md:text-6xl font-display font-bold text-primary-foreground leading-tight mb-6 animate-fade-in" style={{ animationDelay: "0.1s" }}>
-              Smart Attendance for{" "}
-              <span className="text-gradient-gold">ZDSPGC</span>
+              Smart Attendance for BSIS{" "}
+              <span className="text-gradient-gold">ZDSPGC-Dimataling Campus</span>
             </h1>
             <p className="text-lg md:text-xl text-primary-foreground/75 mb-8 max-w-2xl animate-fade-in" style={{ animationDelay: "0.2s" }}>
               A secure, modern attendance monitoring system using encrypted QR codes.

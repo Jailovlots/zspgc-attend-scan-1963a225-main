@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import {
     BarChart3, Download, Search, Filter, Calendar, Users,
-    CheckCircle2, Clock, XCircle, FileSpreadsheet, ChevronDown,
+    CheckCircle2, Clock, XCircle, FileSpreadsheet, ChevronDown, Printer,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +14,7 @@ import {
     CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import DashboardLayout from "@/components/DashboardLayout";
-import { getAllStudents, getAttendanceRecords, type StudentUser, type AttendanceRecord } from "@/lib/auth";
+import { getAllStudents, getAttendanceRecords, getCourseSections, type StudentUser, type AttendanceRecord } from "@/lib/auth";
 import { getEvents, type SchoolEvent } from "@/data/events";
 import { toast } from "sonner";
 import { exportToCsv, type CSVSection } from "@/lib/exportUtils";
@@ -49,18 +49,27 @@ const AdminReports = () => {
 
     const [selectedEventId, setSelectedEventId] = useState<string>("all");
     const [courseFilter, setCourseFilter] = useState("all");
+    const [yearFilter, setYearFilter] = useState("all");
+    const [sectionFilter, setSectionFilter] = useState("all");
     const [statusFilter, setStatusFilter] = useState("all");
     const [searchQuery, setSearchQuery] = useState("");
+    const [courseSections, setCourseSections] = useState<Record<string, Record<string, string[]>>>({});
 
     // ── Load data ──────────────────────────────────────────────────────────────
     useEffect(() => {
         const init = async () => {
             setIsLoading(true);
             try {
-                const [ev, stu, att] = await Promise.all([getEvents(), getAllStudents(), getAttendanceRecords()]);
+                const [ev, stu, att, sections] = await Promise.all([
+                    getEvents(),
+                    getAllStudents(),
+                    getAttendanceRecords(),
+                    getCourseSections()
+                ]);
                 setEvents(ev);
                 setStudents(stu.filter((s) => s.role === "student"));
                 setAttendance(att);
+                setCourseSections(sections);
             } catch {
                 toast.error("Failed to load report data");
             } finally {
@@ -75,6 +84,24 @@ const AdminReports = () => {
         return ["all", ...all];
     }, [students]);
 
+    // Dynamically retrieve available sections based on course and year selection
+    const availableSections = useMemo(() => {
+        let list = students;
+        if (courseFilter !== "all") {
+            list = list.filter(s => s.course === courseFilter);
+        }
+        if (yearFilter !== "all") {
+            list = list.filter(s => s.yearLevel === yearFilter);
+        }
+        const uniqueSections = [...new Set(list.map(s => s.section).filter(Boolean))].sort();
+        return ["all", ...uniqueSections];
+    }, [students, courseFilter, yearFilter]);
+
+    // Reset section filter when course or year filters change
+    useEffect(() => {
+        setSectionFilter("all");
+    }, [courseFilter, yearFilter]);
+
     // ── Filtered attendance for selected event ─────────────────────────────────
     const eventAttendance = useMemo(() => {
         if (selectedEventId === "all") return attendance;
@@ -84,11 +111,19 @@ const AdminReports = () => {
     // ── Build per-student rows ─────────────────────────────────────────────────
     const studentRows = useMemo<StudentRow[]>(() => {
         // Which students are in scope?
-        const scopedStudents =
-            courseFilter === "all" ? students : students.filter((s) => s.course === courseFilter);
+        let scopedStudents = students;
+        if (courseFilter !== "all") {
+            scopedStudents = scopedStudents.filter((s) => s.course === courseFilter);
+        }
+        if (yearFilter !== "all") {
+            scopedStudents = scopedStudents.filter((s) => s.yearLevel === yearFilter);
+        }
+        if (sectionFilter !== "all") {
+            scopedStudents = scopedStudents.filter((s) => s.section === sectionFilter);
+        }
 
         return scopedStudents.map((s) => {
-            const rec = eventAttendance.find((r) => r.id === s.studentId);
+            const rec = eventAttendance.find((r) => r.studentId === s.studentId);
             return {
                 studentId: s.studentId ?? "",
                 name: `${s.firstName ?? ""} ${s.lastName ?? ""}`.trim(),
@@ -100,7 +135,7 @@ const AdminReports = () => {
                 time: rec ? rec.time : "—",
             };
         });
-    }, [students, eventAttendance, courseFilter]);
+    }, [students, eventAttendance, courseFilter, yearFilter, sectionFilter]);
 
     // ── Apply additional filters ───────────────────────────────────────────────
     const filteredRows = useMemo(() => {
@@ -159,6 +194,9 @@ const AdminReports = () => {
                 title: `AttendWise Attendance Report - ${eventLabel}`,
                 rows: [
                     ["Export Date", dateStamp],
+                    ["Course Filter", courseFilter === "all" ? "All Courses" : courseFilter],
+                    ["Year Level Filter", yearFilter === "all" ? "All Years" : yearFilter],
+                    ["Section Filter", sectionFilter === "all" ? "All Sections" : sectionFilter],
                     ["Total Students", stats.total],
                     ["Present", stats.present],
                     ["Late", stats.late],
@@ -193,6 +231,10 @@ const AdminReports = () => {
         toast.success("Enhanced report exported as CSV");
     };
 
+    const handlePrint = () => {
+        window.print();
+    };
+
     // ── Loading state ──────────────────────────────────────────────────────────
     if (isLoading) {
         return (
@@ -209,6 +251,81 @@ const AdminReports = () => {
 
     return (
         <DashboardLayout role="admin">
+            {/* Custom Print Stylesheet */}
+            <style dangerouslySetInnerHTML={{ __html: `
+                @media print {
+                    /* Hide non-printable items */
+                    aside, header, nav, button, .no-print, [role="navigation"] {
+                        display: none !important;
+                    }
+                    
+                    /* Expand main container to page boundaries */
+                    body, main, #root, .flex-1, .min-h-screen {
+                        width: 100% !important;
+                        max-width: 100% !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        background: white !important;
+                        color: black !important;
+                        box-shadow: none !important;
+                        min-height: auto !important;
+                        display: block !important;
+                    }
+
+                    main {
+                        padding: 10mm 15mm !important;
+                    }
+
+                    /* Override layouts */
+                    .grid {
+                        display: block !important;
+                        width: 100% !important;
+                    }
+
+                    /* Formatting cards for printing */
+                    .shadow-card {
+                        border: 1px solid #e2e8f0 !important;
+                        box-shadow: none !important;
+                        margin-bottom: 25px !important;
+                        page-break-inside: avoid !important;
+                        border-radius: 8px !important;
+                        background: white !important;
+                    }
+
+                    /* Stat block items */
+                    .grid-cols-2 {
+                        display: flex !important;
+                        flex-wrap: wrap !important;
+                        gap: 12px !important;
+                        margin-bottom: 25px !important;
+                    }
+                    .grid-cols-2 > div {
+                        flex: 1 1 18% !important;
+                        min-width: 125px !important;
+                        border: 1px solid #cbd5e1 !important;
+                        background: #f8fafc !important;
+                        padding: 12px !important;
+                        border-radius: 6px !important;
+                    }
+
+                    /* Tables */
+                    table {
+                        width: 100% !important;
+                        border-collapse: collapse !important;
+                    }
+                    th, td {
+                        border: 1px solid #cbd5e1 !important;
+                        padding: 6px 12px !important;
+                        font-size: 11px !important;
+                        color: black !important;
+                    }
+                    th {
+                        background-color: #f1f5f9 !important;
+                        font-weight: bold !important;
+                    }
+                }
+            ` }} />
+
             <div className="max-w-7xl mx-auto space-y-6">
                 {/* ── Header ─────────────────────────────────────────────────────── */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -221,13 +338,18 @@ const AdminReports = () => {
                             View and export attendance data by event or across all events
                         </p>
                     </div>
-                    <Button onClick={handleExport} className="bg-gold text-gold-foreground hover:bg-gold/90">
-                        <FileSpreadsheet className="h-4 w-4 mr-2" /> Export CSV
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <Button onClick={handlePrint} variant="outline" className="border-border text-foreground hover:bg-muted font-semibold no-print">
+                            <Printer className="h-4 w-4 mr-2" /> Print Report
+                        </Button>
+                        <Button onClick={handleExport} className="bg-gold text-gold-foreground hover:bg-gold/90 font-semibold no-print">
+                            <FileSpreadsheet className="h-4 w-4 mr-2" /> Export CSV
+                        </Button>
+                    </div>
                 </div>
 
                 {/* ── Filters row ────────────────────────────────────────────────── */}
-                <Card className="shadow-card">
+                <Card className="shadow-card no-print">
                     <CardContent className="p-4">
                         <div className="flex flex-wrap gap-3 items-end">
                             {/* Event selector */}
@@ -265,6 +387,42 @@ const AdminReports = () => {
                                     </SelectContent>
                                 </Select>
                             </div>
+                            {/* Year Level filter */}
+                            <div className="space-y-1">
+                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                                    <Filter className="h-3 w-3" /> Year
+                                </label>
+                                <Select value={yearFilter} onValueChange={setYearFilter}>
+                                    <SelectTrigger className="w-36">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Years</SelectItem>
+                                        <SelectItem value="1st Year">1st Year</SelectItem>
+                                        <SelectItem value="2nd Year">2nd Year</SelectItem>
+                                        <SelectItem value="3rd Year">3rd Year</SelectItem>
+                                        <SelectItem value="4th Year">4th Year</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            {/* Section filter */}
+                            <div className="space-y-1">
+                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                                    <Filter className="h-3 w-3" /> Section
+                                </label>
+                                <Select value={sectionFilter} onValueChange={setSectionFilter}>
+                                    <SelectTrigger className="w-36">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {availableSections.map((sec) => (
+                                            <SelectItem key={sec} value={sec}>
+                                                {sec === "all" ? "All Sections" : sec}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                             {/* Status filter */}
                             <div className="space-y-1">
                                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</label>
@@ -273,7 +431,7 @@ const AdminReports = () => {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">All</SelectItem>
+                                        <SelectItem value="all">All Status</SelectItem>
                                         <SelectItem value="Present">Present</SelectItem>
                                         <SelectItem value="Late">Late</SelectItem>
                                         <SelectItem value="Absent">Absent</SelectItem>

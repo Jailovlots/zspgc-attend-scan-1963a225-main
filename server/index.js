@@ -180,6 +180,7 @@ app.post('/api/register', async (req, res) => {
       u.enrollmentStatus || '', u.guardianName || '', u.guardianPhone || '', u.guardianRelation || '',
       u.role || 'student', u.password
     ]);
+    studentsCache.data = null; // Invalidate cache
     res.json({ success: true });
   } catch (err) {
     // PostgreSQL unique violation error code is 23505
@@ -229,7 +230,7 @@ app.get('/api/students', async (req, res) => {
 app.get('/api/students/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    const userResult = await db.query('SELECT id, name FROM students WHERE studentId = $1', [id]);
+    const userResult = await db.query('SELECT * FROM users WHERE studentid = $1', [id]);
     if (userResult.rows.length > 0) {
       res.json(mapUser(userResult.rows[0]));
     } else {
@@ -282,6 +283,7 @@ app.put('/api/students/:id', async (req, res) => {
     ]);
 
     await client.query('COMMIT');
+    studentsCache.data = null; // Invalidate cache
     res.json({ success: true });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -513,14 +515,17 @@ app.get('/api/attendance', async (req, res) => {
 
 app.post('/api/attendance', async (req, res) => {
   const r = req.body;
+  console.log('[API] POST /api/attendance request payload:', r);
   try {
     const result = await db.query(`
       INSERT INTO attendance (studentid, name, course, section, gender, time, status, eventid, eventname, timestamp)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `, [r.studentId || r.id, r.name, r.course, r.section, r.gender, r.time, r.status, r.eventId, r.eventName, r.timestamp]);
+    console.log('[API] Successfully recorded attendance for:', r.studentId || r.id);
     res.json(mapAttendance(result.rows[0]));
   } catch (err) {
+    console.error('[API] Error saving attendance to DB:', err);
     res.status(400).json({ error: err.message });
   }
 });

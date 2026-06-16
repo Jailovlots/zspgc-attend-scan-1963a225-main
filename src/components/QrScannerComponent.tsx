@@ -9,6 +9,7 @@ interface QrScannerComponentProps {
 
 const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentProps) => {
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const isMountedRef = useRef(true);
   const [isStarted, setIsStarted] = useState(false);
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string>("");
@@ -16,6 +17,7 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
   const [isNativeApp, setIsNativeApp] = useState(false);
 
   useEffect(() => {
+    isMountedRef.current = true;
     // Check for native app bridge (it may take a moment to inject)
     const checkBridge = () => {
       if ((window as any).ReactNativeWebView) {
@@ -69,6 +71,7 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
     }
 
     return () => {
+      isMountedRef.current = false;
       window.removeEventListener('nativeScan', handleNativeScan);
       stopScanner();
     };
@@ -91,6 +94,8 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
           await scannerRef.current.stop();
         } catch (e) { /* ignore */ }
       }
+
+      if (!isMountedRef.current) return;
 
       const scanner = new Html5Qrcode("qr-reader", {
         verbose: false,
@@ -121,13 +126,18 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
           // Ignore scan failures
         }
       );
-      setIsStarted(true);
-      setError("");
+      
+      if (isMountedRef.current) {
+        setIsStarted(true);
+        setError("");
+      }
     } catch (err: any) {
-      console.error("Scanner start error:", err);
-      const msg = err?.message || "Failed to start scanner. Please ensure camera permissions are granted.";
-      setError(msg);
-      onScanError?.(msg);
+      if (isMountedRef.current) {
+        console.error("Scanner start error:", err);
+        const msg = err?.message || "Failed to start scanner. Please ensure camera permissions are granted.";
+        setError(msg);
+        onScanError?.(msg);
+      }
     }
   };
 

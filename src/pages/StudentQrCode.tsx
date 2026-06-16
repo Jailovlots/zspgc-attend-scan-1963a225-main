@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { getEvents, generateEventQrToken, type SchoolEvent } from "@/data/events";
 import { getSession } from "@/lib/auth";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { syncTimeWithServer } from "@/lib/timeSync";
 
 const StudentQrCode = () => {
   const navigate = useNavigate();
@@ -32,6 +33,8 @@ const StudentQrCode = () => {
     const init = async () => {
       setIsLoading(true);
       try {
+        // Synchronize local time with server before generating QR tokens
+        await syncTimeWithServer();
         const data = await getEvents();
         setEvents(data);
       } catch (err) {

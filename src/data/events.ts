@@ -1,4 +1,5 @@
 import { API_URL } from "@/lib/config";
+import { getSyncedTime } from "@/lib/timeSync";
 
 export interface SchoolEvent {
   id: string;
@@ -113,13 +114,13 @@ export const generateEventQrToken = (
   eventId: string,
   eventName: string,
 ) => {
-  const now = new Date();
-  const timestamp = now.getTime();
+  const timestamp = getSyncedTime();
+  const now = new Date(timestamp);
   const dateStr = now.toISOString().split("T")[0];
   const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
 
   // Use a shorter hash for the visible token but keep it unique
-  const hash = btoa(`${studentId}:${eventId}:${timestamp}`).slice(-8).toUpperCase();
+  const hash = btoa(`${studentId}:${eventId}:${timestamp}`).replace(/[^a-zA-Z0-9]/g, '').slice(-8).toUpperCase();
 
   // Token format: ZDSPGC-STU-{studentId}-EVT-{eventId}-TS-{timestamp}-{hash}
   return {
@@ -142,7 +143,7 @@ export const parseEventQrToken = (token: string) => {
   // ZDSPGC-STU-{studentId}-EVT-{eventId}-TS-{timestamp}-{hash}
   // Student ID can be YYYY-NNNNN or other alphanumeric formats
   // Event ID can be EVT-YYYY-NNN or other formats
-  const match = token.match(/ZDSPGC-STU-(.*?)-EVT-(.*?)-TS-(\d+)-([A-Z0-9]+)/);
+  const match = token.match(/ZDSPGC-STU-(.*?)-EVT-(.*?)-TS-(\d+)-([A-Z0-9=+/]+)/);
   
   if (match) {
     return {

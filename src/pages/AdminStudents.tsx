@@ -276,7 +276,7 @@ const AdminStudents = () => {
                                                     <DropdownMenuContent align="end">
                                                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
                                                         <DropdownMenuItem onClick={() => handleEditClick(student)}>
-                                                            <Edit2 className="h-4 w-4 mr-2" /> Edit Student
+                                                            <Edit2 className="h-4 w-4 mr-2" /> Edit
                                                         </DropdownMenuItem>
                                                         <DropdownMenuSeparator />
                                                         <DropdownMenuItem

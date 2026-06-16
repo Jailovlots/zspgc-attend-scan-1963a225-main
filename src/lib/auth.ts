@@ -53,12 +53,18 @@ export const logout = () => {
 // --- Backend API Integration ---
 
 export const loginUser = async (loginId: string, password: string, role: string): Promise<StudentUser | null> => {
-  const res = await fetch(`${API_URL}/api/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ loginId, password, role })
-  });
-  if (!res.ok) return null;
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ loginId, password, role })
+    });
+  } catch {
+    throw new Error('NETWORK_ERROR');
+  }
+  if (res.status === 401) return null;  // bad credentials
+  if (!res.ok) throw new Error('SERVER_ERROR');
   const user = await res.json();
   setSession(user);
   return user;
@@ -206,13 +212,15 @@ export const getAttendanceRecords = async (): Promise<AttendanceRecord[]> => {
   return res.ok ? await res.json() : [];
 };
 
-export const saveAttendanceRecord = async (record: AttendanceRecord) => {
+export const saveAttendanceRecord = async (record: AttendanceRecord): Promise<{ ok: boolean; error?: string }> => {
   const res = await fetch(`${API_URL}/api/attendance`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(record)
   });
-  return res.ok;
+  if (res.ok) return { ok: true };
+  const body = await res.json().catch(() => ({}));
+  return { ok: false, error: body?.error || 'Failed to save record' };
 };
 
 export const clearAttendanceRecords = async () => {

@@ -171,35 +171,28 @@ export const initDb = async () => {
       console.log('Default system settings initialized');
     }
 
-    // 6. Automated Admin Seeding
+    // 6. Automated Admin Seeding — always upsert to keep password in sync
     const adminEmail = 'admin@zdspgc.edu.ph';
     const adminPassword = 'admin123';
     const adminName = 'System Admin';
     const adminRole = 'superadmin';
 
-    console.log('Checking for existing admin accounts...');
-    const adminCheck = await db.query('SELECT * FROM admins WHERE email = $1', [adminEmail]);
-    if (adminCheck.rows.length === 0) {
-      console.log('Seeding default superadmin account...');
-      await db.query(`
-        INSERT INTO admins (name, email, role, password, createdat)
-        VALUES ($1, $2, $3, $4, $5)
-      `, [adminName, adminEmail, adminRole, adminPassword, new Date().toISOString()]);
-      console.log('Admin account created successfully!');
-    }
+    console.log('Upserting default superadmin account...');
+    await db.query(`
+      INSERT INTO admins (name, email, role, password, createdat)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (email) DO UPDATE SET name = $1, password = $4
+    `, [adminName, adminEmail, adminRole, adminPassword, new Date().toISOString()]);
 
     // Ensure admin also exists in users table for backward compatibility/unified login
-    const userCheck = await db.query('SELECT * FROM users WHERE email = $1', [adminEmail]);
-    if (userCheck.rows.length === 0) {
-      console.log('Creating admin in users table for unified access...');
-      await db.query(`
-        INSERT INTO users (
-          studentid, firstname, lastname, email, course, yearlevel, section, gender, role, password
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      `, ['ADMIN-001', 'System', 'Admin', adminEmail, 'N/A', 'N/A', 'N/A', 'Male', 'admin', adminPassword]);
-      console.log('Admin added to users table.');
-    }
+    await db.query(`
+      INSERT INTO users (
+        studentid, firstname, lastname, email, course, yearlevel, section, gender, role, password
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (studentid) DO UPDATE SET password = $10, email = $4
+    `, ['ADMIN-001', 'System', 'Admin', adminEmail, 'N/A', 'N/A', 'N/A', 'Male', 'admin', adminPassword]);
+    console.log('Admin credentials synced successfully.');
 
     // 7. Seed initial courses if empty
     const courseCheck = await db.query('SELECT 1 FROM courses LIMIT 1');
