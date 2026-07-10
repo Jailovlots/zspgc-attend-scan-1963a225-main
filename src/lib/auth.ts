@@ -23,10 +23,11 @@ export interface StudentUser {
   zipCode?: string;
   semester?: string;
   schoolYear?: string;
-  enrollmentStatus?: string;
   guardianName?: string;
   guardianPhone?: string;
   guardianRelation?: string;
+  profileImage?: string;
+  profileImageUpdates?: number;
 }
 
 const SESSION_KEY = "attendwise_session";
@@ -99,6 +100,18 @@ export const updateStudent = async (id: string, user: StudentUser): Promise<{ ok
   const body = await res.json().catch(() => ({}));
   return { ok: false, error: body?.error || 'Update failed' };
 };
+
+export const updateStudentAvatar = async (id: string, profileImage: string): Promise<{ ok: boolean; profileImageUpdates?: number; error?: string }> => {
+  const res = await fetch(`${API_URL}/api/students/${id}/avatar`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profileImage })
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.ok) return { ok: true, profileImageUpdates: body.profileImageUpdates };
+  return { ok: false, error: body?.error || 'Failed to update photo' };
+};
+
 
 export const deleteUser = async (studentId: string) => {
   const res = await fetch(`${API_URL}/api/students/${studentId}`, {

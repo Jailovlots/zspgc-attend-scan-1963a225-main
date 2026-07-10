@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import zdspgcLogo from "@/assets/zdspgc-logo.png";
+import bsisLogo from "@/assets/bsis-logo.png";
 import { loginUser } from "@/lib/auth";
 import { API_URL } from "@/lib/config";
 
@@ -89,7 +89,7 @@ const Login = () => {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-3 mb-4">
-            <img src={zdspgcLogo} alt="ZDSPGC" className="h-14 w-14 rounded-full" />
+            <img src={bsisLogo} alt="BSIS Logo" className="h-14 w-14 rounded-full object-cover" />
           </Link>
           <h1 className="text-2xl font-display font-bold text-foreground">Welcome Back</h1>
           <p className="text-muted-foreground text-sm mt-1">Sign in to AttendWise</p>

@@ -10,8 +10,9 @@ import DashboardLayout from "@/components/DashboardLayout";
 import QrScannerComponent from "@/components/QrScannerComponent";
 import { toast } from "sonner";
 import { getEvents, parseEventQrToken, type SchoolEvent } from "@/data/events";
-import { getAllStudents, getSession, getAttendanceRecords, saveAttendanceRecord, clearAttendanceRecords, deleteAttendanceRecords, getSystemSettings, type AttendanceRecord, type StudentUser } from "@/lib/auth";
+import { getAllStudents, getSession, getAttendanceRecords, saveAttendanceRecord, clearAttendanceRecords, deleteAttendanceRecords, getSystemSettings, getStudentProfile, type AttendanceRecord, type StudentUser } from "@/lib/auth";
 import { getSyncedTime, syncTimeWithServer } from "@/lib/timeSync";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { exportToCsv } from "@/lib/exportUtils";
 import {
@@ -56,6 +57,7 @@ const parseTimeStringToMinutes = (timeString: string): number | null => {
 const AdminScanner = () => {
   const navigate = useNavigate();
   const session = getSession();
+  const adminRole = session?.adminRole;
   const [scannedRecords, setScannedRecords] = useState<AttendanceRecord[]>([]);
   const [lastScan, setLastScan] = useState<AttendanceRecord | null>(null);
   const [scanCount, setScanCount] = useState(0);
@@ -68,6 +70,12 @@ const AdminScanner = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearMode, setClearMode] = useState<'selected' | 'all'>('all');
+
+  // Confirmation dialog states
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [scannedStudent, setScannedStudent] = useState<StudentUser | null>(null);
+  const [pendingRecord, setPendingRecord] = useState<AttendanceRecord | null>(null);
+  const [isSavingRecord, setIsSavingRecord] = useState(false);
 
   useEffect(() => {
     if (!session || session.role !== "admin") {
@@ -254,6 +262,14 @@ const AdminScanner = () => {
         return;
       }
 
+      if (!studentId) {
+        playErrorBeep();
+        toast.error("Invalid QR Code", {
+          description: "This code format is not recognized.",
+        });
+        return;
+      }
+
       const now = new Date();
       const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -263,52 +279,47 @@ const AdminScanner = () => {
       const status: "Present" | "Late" = currentMinutes >= thresholdMinutes ? "Late" : "Present";
 
       console.log("[Scanner] Scanning QR code payload:", decodedText);
-      const student = studentId ? findStudent(studentId) : null;
 
-      if (studentId && student) {
-        const record: AttendanceRecord = {
-          id: studentId, // In local state, we'll keep id as studentId for backward compat
-          studentId: studentId, 
-          name: student.name,
-          course: student.course,
-          section: student.section,
-          gender: student.gender,
-          time: timeStr,
-          status,
-          eventId,
-          eventName,
-          timestamp: now.getTime(),
-        };
+      const fetchingToast = toast.loading("Fetching student details for verification...");
+      try {
+        const student = await getStudentProfile(studentId);
+        toast.dismiss(fetchingToast);
 
-        const result = await saveAttendanceRecord(record);
-        if (result.ok) {
-          playBeep();
-          setScannedRecords((prev) => [record, ...prev]);
-          setLastScan(record);
-          setScanCount((c) => c + 1);
+        if (student) {
+          const record: AttendanceRecord = {
+            id: studentId, // In local state, we'll keep id as studentId for backward compat
+            studentId: studentId, 
+            name: `${student.firstName} ${student.lastName}`,
+            course: student.course,
+            section: student.section,
+            gender: student.gender,
+            time: timeStr,
+            status,
+            eventId,
+            eventName,
+            timestamp: now.getTime(),
+          };
 
-          toast.success(`${status === "Present" ? "✅" : "⏰"} ${student.name}`, {
-            description: `${eventName} • ${student.section} — ${status} at ${timeStr}`,
-          });
-          console.log("[Scanner] Saved record successfully:", record);
+          // Save references for confirmation pop-up
+          setScannedStudent(student);
+          setPendingRecord(record);
+          setShowConfirmDialog(true);
+          playBeep(); // Beep to indicate successful scanner read
         } else {
           playErrorBeep();
-          toast.error("Database Save Failed", {
-            description: result.error || "Could not save the attendance record.",
+          toast.error("Student Not Found", {
+            description: `Student ID ${studentId} not found in the database.`,
           });
-          console.error("[Scanner] Database save failed:", result.error);
         }
-      } else {
+      } catch (err) {
+        toast.dismiss(fetchingToast);
         playErrorBeep();
-        toast.error("Unknown QR Code", {
-          description: studentId
-            ? `Student ID ${studentId} not found in the system.`
-            : "Invalid QR code format.",
+        toast.error("Fetch Error", {
+          description: "Could not retrieve student details from the database.",
         });
-        console.warn("[Scanner] Unknown student scanned:", studentId);
       }
     },
-    [scannedRecords, playBeep, playErrorBeep, events, allStudents, systemSettings.lateThreshold]
+    [scannedRecords, playBeep, playErrorBeep, events, systemSettings.lateThreshold]
   );
   
   const handleExport = () => {
@@ -345,7 +356,7 @@ const AdminScanner = () => {
   const scannedEventIds = [...new Set(scannedRecords.map((r) => r.eventId))];
 
   return (
-    <DashboardLayout role="admin">
+    <DashboardLayout role="admin" adminRole={adminRole}>
       <div className="max-w-5xl mx-auto space-y-6">
         <div>
           <h1 className="text-2xl md:text-3xl font-display font-bold text-foreground flex items-center gap-3">
@@ -574,6 +585,110 @@ const AdminScanner = () => {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+
+            {/* Student Identity Verification Pop-up Confirmation */}
+            <AlertDialog open={showConfirmDialog} onOpenChange={(open) => {
+              if (!open) {
+                setShowConfirmDialog(false);
+                setScannedStudent(null);
+                setPendingRecord(null);
+              }
+            }}>
+              <AlertDialogContent className="max-w-md bg-card border-border shadow-2xl rounded-2xl overflow-hidden p-0">
+                {/* Header Banner */}
+                <div className="h-20 bg-gradient-to-r from-primary to-primary/80 flex items-center justify-between px-6">
+                  <h3 className="text-lg font-display font-bold text-white flex items-center gap-2">
+                    <CheckCircle2 className="h-5 w-5 text-gold" />
+                    Verify Student Identity
+                  </h3>
+                  <Badge className="bg-gold/20 text-gold border-gold/40">
+                    Scan Confirmed
+                  </Badge>
+                </div>
+                
+                <div className="p-6 space-y-6 flex flex-col items-center">
+                  {/* Photo & Name Only */}
+                  <div className="flex flex-col items-center text-center space-y-4 my-2">
+                    <Avatar className="h-40 w-40 border-4 border-card shadow-xl ring-4 ring-gold/20 relative">
+                      {scannedStudent?.profileImage ? (
+                        <img 
+                          src={scannedStudent.profileImage} 
+                          alt="Profile photo" 
+                          className="h-full w-full object-cover rounded-full" 
+                        />
+                      ) : (
+                        <AvatarFallback className="bg-gradient-to-br from-gold to-amber-600 text-white text-4xl font-bold">
+                          {scannedStudent ? `${scannedStudent.firstName[0]}${scannedStudent.lastName[0]}` : "ST"}
+                        </AvatarFallback>
+                      )}
+                    </Avatar>
+                    
+                    <h4 className="text-2xl font-bold text-foreground text-center mt-2">
+                      {scannedStudent?.firstName} {scannedStudent?.middleName ? `${scannedStudent.middleName[0]}. ` : ""}{scannedStudent?.lastName} {scannedStudent?.suffix || ""}
+                    </h4>
+                  </div>
+                </div>
+
+                
+                {/* Actions */}
+                <AlertDialogFooter className="p-4 bg-muted/20 border-t border-border flex sm:flex-row gap-2">
+                  <AlertDialogCancel 
+                    onClick={() => {
+                      playErrorBeep();
+                      toast.error("Deny Confirmation", {
+                        description: "Attendance scan rejected by officer."
+                      });
+                      setShowConfirmDialog(false);
+                      setScannedStudent(null);
+                      setPendingRecord(null);
+                    }}
+                    className="flex-1 border-border/80 hover:bg-muted text-foreground"
+                    disabled={isSavingRecord}
+                  >
+                    Deny / Reject
+                  </AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      if (!pendingRecord) return;
+                      setIsSavingRecord(true);
+                      try {
+                        const result = await saveAttendanceRecord(pendingRecord);
+                        if (result.ok) {
+                          playBeep();
+                          setScannedRecords((prev) => [pendingRecord, ...prev]);
+                          setLastScan(pendingRecord);
+                          setScanCount((c) => c + 1);
+                          toast.success(`✅ Recorded: ${pendingRecord.name}`, {
+                            description: `${pendingRecord.eventName} • ${pendingRecord.status} at ${pendingRecord.time}`,
+                          });
+                          setShowConfirmDialog(false);
+                          setScannedStudent(null);
+                          setPendingRecord(null);
+                        } else {
+                          playErrorBeep();
+                          toast.error("Database Save Failed", {
+                            description: result.error || "Could not save the attendance record.",
+                          });
+                        }
+                      } catch (err) {
+                        playErrorBeep();
+                        toast.error("Network Error", {
+                          description: "An error occurred while connecting to the database."
+                        });
+                      } finally {
+                        setIsSavingRecord(false);
+                      }
+                    }} 
+                    className="flex-1 bg-success hover:bg-success/90 text-success-foreground"
+                    disabled={isSavingRecord}
+                  >
+                    {isSavingRecord ? "Recording..." : "Confirm & Save"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
             <CardContent>
               <Table>
                 <TableHeader>

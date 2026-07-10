@@ -14,10 +14,11 @@ import {
     CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import DashboardLayout from "@/components/DashboardLayout";
-import { getAllStudents, getAttendanceRecords, getCourseSections, type StudentUser, type AttendanceRecord } from "@/lib/auth";
+import { getAllStudents, getAttendanceRecords, getCourseSections, getSession, type StudentUser, type AttendanceRecord } from "@/lib/auth";
 import { getEvents, type SchoolEvent } from "@/data/events";
 import { toast } from "sonner";
 import { exportToCsv, type CSVSection } from "@/lib/exportUtils";
+import { useNavigate } from "react-router-dom";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface StudentRow {
@@ -42,6 +43,9 @@ const BAR_COLORS = { present: "hsl(142,72%,40%)", late: "hsl(38,92%,50%)", absen
 
 // ─── Component ───────────────────────────────────────────────────────────────
 const AdminReports = () => {
+    const navigate = useNavigate();
+    const session = getSession();
+    const adminRole = session?.adminRole;
     const [events, setEvents] = useState<SchoolEvent[]>([]);
     const [students, setStudents] = useState<StudentUser[]>([]);
     const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
@@ -57,6 +61,18 @@ const AdminReports = () => {
 
     // ── Load data ──────────────────────────────────────────────────────────────
     useEffect(() => {
+        if (!session || session.role !== "admin") {
+            toast.error("Please log in as an admin to access this page");
+            navigate("/login");
+            return;
+        }
+
+        if (session.adminRole === "officer") {
+            toast.error("You do not have permission to access the Reports page");
+            navigate("/admin");
+            return;
+        }
+
         const init = async () => {
             setIsLoading(true);
             try {
@@ -238,7 +254,7 @@ const AdminReports = () => {
     // ── Loading state ──────────────────────────────────────────────────────────
     if (isLoading) {
         return (
-            <DashboardLayout role="admin">
+        <DashboardLayout role="admin" adminRole={adminRole}>
                 <div className="flex items-center justify-center min-h-[60vh]">
                     <div className="text-center">
                         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent mx-auto mb-4" />
@@ -250,7 +266,7 @@ const AdminReports = () => {
     }
 
     return (
-        <DashboardLayout role="admin">
+        <DashboardLayout role="admin" adminRole={adminRole}>
             {/* Custom Print Stylesheet */}
             <style dangerouslySetInnerHTML={{ __html: `
                 @media print {

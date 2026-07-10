@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import DashboardLayout from "@/components/DashboardLayout";
-import { getSession, getAttendanceRecords, type AttendanceRecord } from "@/lib/auth";
+import { getSession, setSession, getStudentProfile, getAttendanceRecords, type AttendanceRecord } from "@/lib/auth";
 import { getEvents, generateEventQrToken, type SchoolEvent } from "@/data/events";
 import { useMemo, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -31,10 +31,18 @@ const StudentDashboard = () => {
 
     const loadData = async () => {
       try {
-        const [records, eventsData] = await Promise.all([
+        const [records, eventsData, freshProfile] = await Promise.all([
           getAttendanceRecords(),
-          getEvents()
+          getEvents(),
+          getStudentProfile(session.studentId)
         ]);
+
+        let activeCourse = session.course;
+        if (freshProfile) {
+          setSession(freshProfile);
+          setUser(freshProfile);
+          activeCourse = freshProfile.course;
+        }
         
         // Filter personal history
         const personalHistory = records
@@ -42,12 +50,11 @@ const StudentDashboard = () => {
           .sort((a, b) => b.timestamp - a.timestamp);
         setHistory(personalHistory);
 
-        // Filter relevant upcoming events
+        // Filter relevant upcoming events (sync filter logic and remove slice limit)
         const relevantEvents = eventsData
           .filter(e => e.status !== "completed")
-          .filter(e => e.category === "general" || e.targetCourses.includes(session.course))
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-          .slice(0, 3);
+          .filter(e => e.targetCourses.length === 0 || e.targetCourses.includes(activeCourse))
+          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         setUpcomingEvents(relevantEvents);
       } catch (err) {
         console.error("Failed to load student dashboard data:", err);
@@ -162,9 +169,9 @@ const StudentDashboard = () => {
                   <CardContent className="p-0">
                     <div className="p-4 space-y-3">
                       <div className="flex justify-between items-start">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.category === 'course-specific' ? 'bg-blue-100 text-blue-700' : 'bg-gold/10 text-gold'
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.targetCourses.length > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gold/10 text-gold'
                           }`}>
-                          {event.category === 'course-specific' ? `${event.targetCourses[0]} Special` : 'Open to All'}
+                          {event.targetCourses.length > 0 ? `${event.targetCourses.join(", ")} Special` : 'Open to All'}
                         </span>
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.status === 'ongoing' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'
                           }`}>

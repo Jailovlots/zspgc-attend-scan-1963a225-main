@@ -8,14 +8,14 @@ import { Separator } from "@/components/ui/separator";
 import DashboardLayout from "@/components/DashboardLayout";
 import { toast } from "sonner";
 import { getEvents, generateEventQrToken, type SchoolEvent } from "@/data/events";
-import { getSession } from "@/lib/auth";
+import { getSession, setSession, getStudentProfile, type StudentUser } from "@/lib/auth";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { syncTimeWithServer } from "@/lib/timeSync";
 
 const StudentQrCode = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const student = getSession();
+  const [student, setStudent] = useState<StudentUser | null>(getSession());
   const [selectedEvent, setSelectedEvent] = useState<SchoolEvent | null>(null);
   const [events, setEvents] = useState<SchoolEvent[]>([]);
   const [generatedTokens, setGeneratedTokens] = useState<Record<string, { token: string; payload: any }>>({});
@@ -35,8 +35,21 @@ const StudentQrCode = () => {
       try {
         // Synchronize local time with server before generating QR tokens
         await syncTimeWithServer();
+
+        // Fetch fresh student profile to sync details (e.g. section)
+        const session = getSession();
+        if (session && session.studentId) {
+          const fresh = await getStudentProfile(session.studentId);
+          if (fresh) {
+            setSession(fresh);
+            setStudent(fresh);
+          }
+        }
+
         const data = await getEvents();
-        setEvents(data);
+        // Only show upcoming/ongoing events, filter out completed ones to sync with dashboard
+        const activeEvents = data.filter((e) => e.status !== "completed");
+        setEvents(activeEvents);
       } catch (err) {
         toast.error("Failed to load events");
       } finally {

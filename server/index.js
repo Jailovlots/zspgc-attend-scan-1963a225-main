@@ -15,7 +15,8 @@ const app = express();
 const PORT = process.env.PORT || 3002;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 // Serve static frontend files with CDN/Browser caching enabled
 app.use(express.static(path.join(__dirname, '../dist'), {
   setHeaders: (res, filePath) => {
@@ -78,12 +79,13 @@ const mapUser = (row) => ({
   zipCode: row.zipcode ?? row.zipCode ?? '',
   semester: row.semester ?? '',
   schoolYear: row.schoolyear ?? row.schoolYear ?? '',
-  enrollmentStatus: row.enrollmentstatus ?? row.enrollmentStatus ?? '',
   guardianName: row.guardianname ?? row.guardianName ?? '',
   guardianPhone: row.guardianphone ?? row.guardianPhone ?? '',
   guardianRelation: row.guardianrelation ?? row.guardianRelation ?? '',
   role: row.role ?? 'student',
   password: row.password ?? '',
+  profileImage: row.profileimage ?? row.profileImage ?? '',
+  profileImageUpdates: row.profileimageupdates ?? row.profileImageUpdates ?? 0,
 });
 
 const mapAdmin = (row) => ({
@@ -169,15 +171,15 @@ app.post('/api/register', async (req, res) => {
         studentid, firstname, lastname, middlename, suffix, email, 
         course, yearlevel, section, gender, phone, birthday, 
         address, city, province, zipcode, semester, schoolyear, 
-        enrollmentstatus, guardianname, guardianphone, guardianrelation, 
+        guardianname, guardianphone, guardianrelation, 
         role, password
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
     `, [
       u.studentId, u.firstName, u.lastName, u.middleName || '', u.suffix || '', u.email || '',
       u.course, u.yearLevel, u.section, u.gender, u.phone || '', u.birthday || '',
       u.address || '', u.city || '', u.province || '', u.zipCode || '', u.semester || '', u.schoolYear || '',
-      u.enrollmentStatus || '', u.guardianName || '', u.guardianPhone || '', u.guardianRelation || '',
+      u.guardianName || '', u.guardianPhone || '', u.guardianRelation || '',
       u.role || 'student', u.password
     ]);
     studentsCache.data = null; // Invalidate cache
@@ -269,15 +271,15 @@ app.put('/api/students/:id', async (req, res) => {
         firstname = $2, lastname = $3, middlename = $4, suffix = $5, email = $6,
         course = $7, yearlevel = $8, section = $9, gender = $10, phone = $11,
         birthday = $12, address = $13, city = $14, province = $15, zipcode = $16,
-        semester = $17, schoolyear = $18, enrollmentstatus = $19, guardianname = $20,
-        guardianphone = $21, guardianrelation = $22, password = $23
-      WHERE studentid = $24
+        semester = $17, schoolyear = $18, guardianname = $19,
+        guardianphone = $20, guardianrelation = $21, password = $22
+      WHERE studentid = $23
     `, [
       newId,
       u.firstName, u.lastName, u.middleName || '', u.suffix || '', u.email || '',
       u.course, u.yearLevel, u.section, u.gender, u.phone || '',
       u.birthday || '', u.address || '', u.city || '', u.province || '', u.zipCode || '',
-      u.semester || '', u.schoolYear || '', u.enrollmentStatus || '', u.guardianName || '',
+      u.semester || '', u.schoolYear || '', u.guardianName || '',
       u.guardianPhone || '', u.guardianRelation || '', u.password,
       id
     ]);
@@ -292,6 +294,34 @@ app.put('/api/students/:id', async (req, res) => {
     client.release();
   }
 });
+
+app.put('/api/students/:id/avatar', async (req, res) => {
+  const { id } = req.params;
+  const { profileImage } = req.body;
+
+  try {
+    const userRes = await db.query('SELECT profileimageupdates FROM users WHERE studentid = $1', [id]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Student not found.' });
+    }
+
+    const currentUpdates = userRes.rows[0].profileimageupdates || 0;
+    if (currentUpdates >= 2) {
+      return res.status(400).json({ error: 'You have reached the maximum limit of 2 profile photo updates.' });
+    }
+
+    await db.query(
+      'UPDATE users SET profileimage = $1, profileimageupdates = $2 WHERE studentid = $3',
+      [profileImage, currentUpdates + 1, id]
+    );
+
+    studentsCache.data = null; // Invalidate cache
+    res.json({ success: true, profileImageUpdates: currentUpdates + 1 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 app.delete('/api/students/:id', async (req, res) => {
   try {
@@ -600,16 +630,16 @@ app.post('/api/migrate', async (req, res) => {
             studentid, firstname, lastname, middlename, suffix, email, 
             course, yearlevel, section, gender, phone, birthday, 
             address, city, province, zipcode, semester, schoolyear, 
-            enrollmentstatus, guardianname, guardianphone, guardianrelation, 
+            guardianname, guardianphone, guardianrelation, 
             role, password
           ) 
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
           ON CONFLICT (studentid) DO NOTHING
         `, [
           u.studentId, u.firstName, u.lastName, u.middleName || '', u.suffix || '', u.email || '',
           u.course, u.yearLevel, u.section, u.gender, u.phone || '', u.birthday || '',
           u.address || '', u.city || '', u.province || '', u.zipCode || '', u.semester || '', u.schoolYear || '',
-          u.enrollmentStatus || '', u.guardianName || '', u.guardianPhone || '', u.guardianRelation || '',
+          u.guardianName || '', u.guardianPhone || '', u.guardianRelation || '',
           u.role || 'student', u.password
         ]);
       }

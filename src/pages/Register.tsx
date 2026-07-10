@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import zdspgcLogo from "@/assets/zdspgc-logo.png";
+import bsisLogo from "@/assets/bsis-logo.png";
 import { saveUser, getCourseSections } from "@/lib/auth";
 
 const Register = () => {
@@ -100,7 +100,7 @@ const Register = () => {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-3 mb-4">
-            <img src={zdspgcLogo} alt="ZDSPGC" className="h-14 w-14 rounded-full" />
+            <img src={bsisLogo} alt="BSIS Logo" className="h-14 w-14 rounded-full object-cover" />
           </Link>
           <h1 className="text-2xl font-display font-bold text-primary-foreground">Create Account</h1>
           <p className="text-primary-foreground/60 text-sm mt-1">Join AttendWise today</p>

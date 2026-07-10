@@ -39,10 +39,14 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import DashboardLayout from "@/components/DashboardLayout";
-import { getAllStudents, saveUser, deleteUser, StudentUser, getCourseSections, updateStudent } from "@/lib/auth";
+import { getAllStudents, saveUser, deleteUser, StudentUser, getCourseSections, updateStudent, getSession } from "@/lib/auth";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 const AdminStudents = () => {
+    const navigate = useNavigate();
+    const session = getSession();
+    const adminRole = session?.adminRole;
     const [students, setStudents] = useState<StudentUser[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [courseSections, setCourseSections] = useState<Record<string, Record<string, string[]>>>({});
@@ -69,6 +73,12 @@ const AdminStudents = () => {
     });
 
     useEffect(() => {
+        if (!session || session.role !== "admin") {
+            toast.error("Please log in as an admin to access this page");
+            navigate("/login");
+            return;
+        }
+
         const init = async () => {
             setIsLoading(true);
             try {
@@ -192,7 +202,7 @@ const AdminStudents = () => {
     }, [formData.course, formData.yearLevel, courseSections]);
 
     return (
-        <DashboardLayout role="admin">
+        <DashboardLayout role="admin" adminRole={adminRole}>
             <div className="max-w-7xl mx-auto space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
@@ -283,7 +293,7 @@ const AdminStudents = () => {
                                                             className="text-destructive focus:text-destructive"
                                                             onClick={() => handleDeleteClick(student.studentId)}
                                                         >
-                                                            <Trash2 className="h-4 w-4 mr-2" /> Delete Student
+                                                            <Trash2 className="h-4 w-4 mr-2" /> Delete
                                                         </DropdownMenuItem>
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>

@@ -35,11 +35,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import DashboardLayout from "@/components/DashboardLayout";
 import { getEvents, saveEvent, deleteEvent, SchoolEvent } from "@/data/events";
-import { getCourseSections } from "@/lib/auth";
+import { getCourseSections, getSession } from "@/lib/auth";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { useNavigate } from "react-router-dom";
 
 const AdminEvents = () => {
+    const navigate = useNavigate();
+    const session = getSession();
+    const adminRole = session?.adminRole;
     const [events, setEvents] = useState<SchoolEvent[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [categoryFilter, setCategoryFilter] = useState("all");
@@ -66,6 +70,12 @@ const AdminEvents = () => {
     });
 
     useEffect(() => {
+        if (!session || session.role !== "admin") {
+            toast.error("Please log in as an admin to access this page");
+            navigate("/login");
+            return;
+        }
+
         const init = async () => {
             setIsLoading(true);
             try {
@@ -177,7 +187,7 @@ const AdminEvents = () => {
     };
 
     return (
-        <DashboardLayout role="admin">
+        <DashboardLayout role="admin" adminRole={adminRole}>
             <div className="max-w-7xl mx-auto space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>

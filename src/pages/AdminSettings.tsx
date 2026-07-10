@@ -44,8 +44,10 @@ const defaultSettings: SystemSettings = {
 };
 
 const AdminSettings = () => {
+    const navigate = useNavigate();
     const session = getSession();
     const currentAdminId = session?.adminId as number | undefined;
+    const adminRole = session?.adminRole;
 
     // --- Officer Accounts ---
     const [admins, setAdmins] = useState<AdminUser[]>([]);
@@ -64,6 +66,18 @@ const AdminSettings = () => {
     const [isSavingSys, setIsSavingSys] = useState(false);
 
     useEffect(() => {
+        if (!session || session.role !== "admin") {
+            toast.error("Please log in as an admin to access this page");
+            navigate("/login");
+            return;
+        }
+
+        if (session.adminRole === "officer") {
+            toast.error("You do not have permission to access the Settings page");
+            navigate("/admin");
+            return;
+        }
+
         loadAdmins();
         loadSettings();
     }, []);
@@ -172,7 +186,7 @@ const AdminSettings = () => {
         );
 
     return (
-        <DashboardLayout role="admin">
+        <DashboardLayout role="admin" adminRole={adminRole}>
             <div className="max-w-5xl mx-auto space-y-6">
                 {/* Header */}
                 <div>
@@ -189,7 +203,7 @@ const AdminSettings = () => {
                             <Users className="h-4 w-4" /> Officer Accounts
                         </TabsTrigger>
                         <TabsTrigger value="system" className="flex items-center gap-2">
-                            <School className="h-4 w-4" /> System Settings
+                            <School className="h-4 w-4" /> Settings
                         </TabsTrigger>
                     </TabsList>
 

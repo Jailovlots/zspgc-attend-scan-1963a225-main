@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import DashboardLayout from "@/components/DashboardLayout";
-import { getAllStudents, getAttendanceRecords, getCourseSections, type AttendanceRecord, type StudentUser } from "@/lib/auth";
+import { getAllStudents, getAttendanceRecords, getCourseSections, getSession, type AttendanceRecord, type StudentUser } from "@/lib/auth";
 import { useNavigate } from "react-router-dom";
 import { exportToCsv } from "@/lib/exportUtils";
 import { toast } from "sonner";
@@ -33,6 +33,8 @@ interface SectionEntry {
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
+  const session = getSession();
+  const adminRole = session?.adminRole;
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString());
   const [viewMode, setViewMode] = useState<"grouped" | "list">("grouped");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -47,6 +49,12 @@ const AdminDashboard = () => {
   const todayStr = getTodayDateString();
 
   useEffect(() => {
+    if (!session || session.role !== "admin") {
+      toast.error("Please log in as an admin to access this page");
+      navigate("/login");
+      return;
+    }
+
     const init = async () => {
       setIsLoading(true);
       try {
@@ -299,7 +307,7 @@ const AdminDashboard = () => {
 
   if (isLoading) {
     return (
-      <DashboardLayout role="admin">
+      <DashboardLayout role="admin" adminRole={adminRole}>
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent mx-auto mb-4"></div>
@@ -311,7 +319,7 @@ const AdminDashboard = () => {
   }
 
   return (
-    <DashboardLayout role="admin">
+    <DashboardLayout role="admin" adminRole={adminRole}>
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>

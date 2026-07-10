@@ -16,7 +16,7 @@ const poolConfig = process.env.DATABASE_URL
       user: process.env.PGUSER || 'postgres',
       host: process.env.PGHOST || 'localhost',
       database: process.env.PGDATABASE || 'scanner_db',
-      password: process.env.PGPASSWORD || 'hadzmie0104',
+      password: process.env.PGPASSWORD || 'hadzmie1918',
       port: process.env.PGPORT || 5432,
     };
 
@@ -54,7 +54,6 @@ export const initDb = async () => {
         zipcode TEXT,
         semester TEXT,
         schoolyear TEXT,
-        enrollmentstatus TEXT,
         guardianname TEXT,
         guardianphone TEXT,
         guardianrelation TEXT,
@@ -83,11 +82,28 @@ export const initDb = async () => {
       console.log('Skip PK migration (table might not exist yet or other error)');
     }
 
+    // Drop enrollmentstatus column if it exists to clean up schema
+    try {
+      await db.query(`ALTER TABLE users DROP COLUMN IF EXISTS enrollmentstatus`);
+      console.log('Successfully dropped enrollmentstatus column from users table');
+    } catch (e) {
+      console.log('Skip dropping enrollmentstatus column:', e.message);
+    }
+
+    // Ensure profile image columns exist
+    try {
+      await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profileimage TEXT`);
+      await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profileimageupdates INTEGER DEFAULT 0`);
+      console.log('Successfully verified profile image columns in users table');
+    } catch (e) {
+      console.log('Skip adding profile image columns:', e.message);
+    }
+
     // 3. Normalize other columns if they exist in mixed case
     const columnsToFix = {
       'firstName': 'firstname', 'lastName': 'lastname', 'middleName': 'middlename',
       'yearLevel': 'yearlevel', 'zipCode': 'zipcode', 'schoolYear': 'schoolyear',
-      'enrollmentStatus': 'enrollmentstatus', 'guardianName': 'guardianname',
+      'guardianName': 'guardianname',
       'guardianPhone': 'guardianphone', 'guardianRelation': 'guardianrelation'
     };
 

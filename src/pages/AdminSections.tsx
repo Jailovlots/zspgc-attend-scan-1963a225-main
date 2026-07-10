@@ -36,11 +36,15 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import DashboardLayout from "@/components/DashboardLayout";
-import { getCourseSections, saveCourseSections } from "@/lib/auth";
+import { getCourseSections, saveCourseSections, getSession } from "@/lib/auth";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 const AdminSections = () => {
-    const [courseSections, setCourseSections] = useState<Record<string, Record<string, string[]>>>({});
+    const navigate = useNavigate();
+    const session = getSession();
+    const adminRole = session?.adminRole;
+    const [courseSections, setCourseSections] = useState<Record<string, Record<string, string[]>>>({}); 
 
     // Add Course Modal State
     const [isAddCourseOpen, setIsAddCourseOpen] = useState(false);
@@ -75,6 +79,18 @@ const AdminSections = () => {
     } | null>(null);
 
     useEffect(() => {
+        if (!session || session.role !== "admin") {
+            toast.error("Please log in as an admin to access this page");
+            navigate("/login");
+            return;
+        }
+
+        if (session.adminRole === "officer") {
+            toast.error("You do not have permission to access the Sections page");
+            navigate("/admin");
+            return;
+        }
+
         const init = async () => {
             setIsLoading(true);
             try {
@@ -272,7 +288,7 @@ const AdminSections = () => {
     };
 
     return (
-        <DashboardLayout role="admin">
+        <DashboardLayout role="admin" adminRole={adminRole}>
             <div className="max-w-5xl mx-auto space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
