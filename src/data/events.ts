@@ -139,31 +139,52 @@ export const generateEventQrToken = (
 
 // Parse an event QR token
 export const parseEventQrToken = (token: string) => {
-  // More robust matching:
-  // ZDSPGC-STU-{studentId}-EVT-{eventId}-TS-{timestamp}-{hash}
-  // Student ID can be YYYY-NNNNN or other alphanumeric formats
-  // Event ID can be EVT-YYYY-NNN or other formats
-  const match = token.match(/ZDSPGC-STU-(.*?)-EVT-(.*?)-TS-(\d+)-([A-Z0-9=+/]+)/);
-  
-  if (match) {
-    return {
-      studentId: match[1],
-      eventId: match[2],
-      timestamp: parseInt(match[3], 10),
-      hash: match[4],
-    };
+  // Token format: ZDSPGC-STU-{studentId}-EVT-{eventId}-TS-{timestamp}-{hash}
+  //
+  // Problem: studentId and eventId can contain hyphens (e.g. "2023-453", "EVT-2025-001"),
+  // which breaks naive regex splitting.
+  //
+  // Solution: anchor from known fixed landmarks:
+  //   1. Strip the "ZDSPGC-STU-" prefix
+  //   2. Find the LAST occurrence of "-TS-{digits}" to extract timestamp + hash
+  //   3. Everything between prefix and "-TS-" contains "{studentId}-EVT-{eventId}"
+  //   4. Split that on the FIRST "-EVT-" to separate studentId from eventId
+
+  const prefix = 'ZDSPGC-STU-';
+  if (!token.startsWith(prefix)) {
+    // Legacy fallback
+    const legacyMatch = token.match(/ZDSPGC-STU-([\w-]+)/);
+    if (legacyMatch && !token.includes('-EVT-')) {
+      return {
+        studentId: legacyMatch[1].trim(),
+        eventId: 'EVT-GENERAL',
+        timestamp: Date.now(),
+        hash: 'LEGACY',
+      };
+    }
+    return null;
   }
 
-  // Fallback for legacy format if any
-  const legacyMatch = token.match(/ZDSPGC-STU-([\w-]+)/);
-  if (legacyMatch && !token.includes("-EVT-")) {
-    return {
-      studentId: legacyMatch[1],
-      eventId: "EVT-GENERAL",
-      timestamp: Date.now(),
-      hash: "LEGACY",
-    };
-  }
+  const body = token.slice(prefix.length); // e.g. "2023-453-EVT-EVT-2025-001-TS-1234567890-ABCDEF"
 
-  return null;
+  // Find "-TS-{digits}" pattern from right side
+  const tsMatch = body.match(/-TS-(\d+)-([A-Z0-9=+/]+)$/);
+  if (!tsMatch) return null;
+
+  const timestamp = parseInt(tsMatch[1], 10);
+  const hash = tsMatch[2];
+
+  // Strip the "-TS-..." tail to get "{studentId}-EVT-{eventId}"
+  const idEvtPart = body.slice(0, body.lastIndexOf('-TS-' + tsMatch[1]));
+
+  // Split on the FIRST occurrence of "-EVT-" to separate studentId from eventId
+  const evtIndex = idEvtPart.indexOf('-EVT-');
+  if (evtIndex === -1) return null;
+
+  const studentId = idEvtPart.slice(0, evtIndex).trim();
+  const eventId = idEvtPart.slice(evtIndex + 1).trim(); // keeps "EVT-..."
+
+  if (!studentId || !eventId) return null;
+
+  return { studentId, eventId, timestamp, hash };
 };

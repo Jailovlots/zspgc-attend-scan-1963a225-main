@@ -232,7 +232,7 @@ app.get('/api/students', async (req, res) => {
 app.get('/api/students/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    const userResult = await db.query('SELECT * FROM users WHERE studentid = $1', [id]);
+    const userResult = await db.query('SELECT * FROM users WHERE LOWER(TRIM(studentid)) = LOWER(TRIM($1))', [id]);
     if (userResult.rows.length > 0) {
       res.json(mapUser(userResult.rows[0]));
     } else {
@@ -300,11 +300,12 @@ app.put('/api/students/:id/avatar', async (req, res) => {
   const { profileImage } = req.body;
 
   try {
-    const userRes = await db.query('SELECT profileimageupdates FROM users WHERE studentid = $1', [id]);
+    const userRes = await db.query('SELECT profileimageupdates, studentid FROM users WHERE LOWER(TRIM(studentid)) = LOWER(TRIM($1))', [id]);
     if (userRes.rows.length === 0) {
       return res.status(404).json({ error: 'Student not found.' });
     }
 
+    const realId = userRes.rows[0].studentid; // use actual DB value for UPDATE
     const currentUpdates = userRes.rows[0].profileimageupdates || 0;
     if (currentUpdates >= 2) {
       return res.status(400).json({ error: 'You have reached the maximum limit of 2 profile photo updates.' });
@@ -312,7 +313,7 @@ app.put('/api/students/:id/avatar', async (req, res) => {
 
     await db.query(
       'UPDATE users SET profileimage = $1, profileimageupdates = $2 WHERE studentid = $3',
-      [profileImage, currentUpdates + 1, id]
+      [profileImage, currentUpdates + 1, realId]
     );
 
     studentsCache.data = null; // Invalidate cache

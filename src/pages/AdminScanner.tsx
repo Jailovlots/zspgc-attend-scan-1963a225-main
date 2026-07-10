@@ -609,19 +609,19 @@ const AdminScanner = () => {
                 <div className="p-6 space-y-6 flex flex-col items-center">
                   {/* Photo & Name Only */}
                   <div className="flex flex-col items-center text-center space-y-4 my-2">
-                    <Avatar className="h-40 w-40 border-4 border-card shadow-xl ring-4 ring-gold/20 relative">
+                    <div className="w-64 h-64 border-4 border-card shadow-xl ring-4 ring-gold/20 relative rounded-2xl overflow-hidden bg-muted flex items-center justify-center">
                       {scannedStudent?.profileImage ? (
                         <img 
                           src={scannedStudent.profileImage} 
                           alt="Profile photo" 
-                          className="h-full w-full object-cover rounded-full" 
+                          className="h-full w-full object-contain" 
                         />
                       ) : (
-                        <AvatarFallback className="bg-gradient-to-br from-gold to-amber-600 text-white text-4xl font-bold">
+                        <div className="bg-gradient-to-br from-gold to-amber-600 text-white text-5xl font-bold w-full h-full flex items-center justify-center">
                           {scannedStudent ? `${scannedStudent.firstName[0]}${scannedStudent.lastName[0]}` : "ST"}
-                        </AvatarFallback>
+                        </div>
                       )}
-                    </Avatar>
+                    </div>
                     
                     <h4 className="text-2xl font-bold text-foreground text-center mt-2">
                       {scannedStudent?.firstName} {scannedStudent?.middleName ? `${scannedStudent.middleName[0]}. ` : ""}{scannedStudent?.lastName} {scannedStudent?.suffix || ""}
