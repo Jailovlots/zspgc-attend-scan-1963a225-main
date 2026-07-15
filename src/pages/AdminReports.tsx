@@ -30,6 +30,7 @@ interface StudentRow {
     section: string;
     gender: string;
     status: "Present" | "Late" | "Absent";
+    date: string;
     time: string;
 }
 
@@ -141,6 +142,9 @@ const AdminReports = () => {
 
         return scopedStudents.map((s) => {
             const rec = eventAttendance.find((r) => r.studentId === s.studentId);
+            // Find the event date for this attendance record
+            const recEvent = rec ? events.find((e) => e.id === rec.eventId) : null;
+            const scanDate = recEvent ? recEvent.date : (selectedEvent ? selectedEvent.date : "—");
             return {
                 studentId: s.studentId ?? "",
                 name: `${s.firstName ?? ""} ${s.lastName ?? ""}`.trim(),
@@ -149,6 +153,7 @@ const AdminReports = () => {
                 section: s.section ?? "",
                 gender: s.gender ?? "",
                 status: rec ? rec.status : "Absent",
+                date: rec ? scanDate : "—",
                 time: rec ? rec.time : "—",
             };
         });
@@ -244,9 +249,9 @@ const AdminReports = () => {
 
         sections.push({
             title: "Attendance Data",
-            headers: ["Student ID", "Full Name", "Course", "Year Level", "Section", "Gender", "Status", "Time"],
+            headers: ["Student ID", "Full Name", "Course", "Year Level", "Section", "Gender", "Status", "Date Scanned", "Time Scanned"],
             rows: sortedRows.map((r) => [
-                r.studentId, r.name, r.course, r.yearLevel, r.section, r.gender, r.status, r.time,
+                r.studentId, r.name, r.course, r.yearLevel, r.section, r.gender, r.status, r.date, r.time,
             ])
         });
 
@@ -278,58 +283,32 @@ const AdminReports = () => {
             {/* Custom Print Stylesheet */}
             <style dangerouslySetInnerHTML={{ __html: `
                 @media print {
-                    /* Hide non-printable items */
-                    aside, header, nav, button, .no-print, [role="navigation"] {
-                        display: none !important;
+                    /* Hide everything by default */
+                    body * {
+                        visibility: hidden;
                     }
-                    
-                    /* Expand main container to page boundaries */
-                    body, main, #root, .flex-1, .min-h-screen {
-                        width: 100% !important;
-                        max-width: 100% !important;
-                        padding: 0 !important;
-                        margin: 0 !important;
-                        background: white !important;
-                        color: black !important;
-                        box-shadow: none !important;
-                        min-height: auto !important;
+
+                    /* Show only the student table section and print header */
+                    #print-student-table,
+                    #print-student-table *,
+                    #print-header,
+                    #print-header * {
+                        visibility: visible !important;
+                    }
+
+                    /* Make print-header visible (overrides inline display:none) */
+                    #print-header {
                         display: block !important;
+                        margin-bottom: 16px;
                     }
 
-                    main {
-                        padding: 10mm 15mm !important;
-                    }
-
-                    /* Override layouts */
-                    .grid {
-                        display: block !important;
+                    /* Position printable area at the top-left of the page */
+                    #print-student-table {
+                        position: absolute !important;
+                        top: 0;
+                        left: 0;
                         width: 100% !important;
-                    }
-
-                    /* Formatting cards for printing */
-                    .shadow-card {
-                        border: 1px solid #e2e8f0 !important;
-                        box-shadow: none !important;
-                        margin-bottom: 25px !important;
-                        page-break-inside: avoid !important;
-                        border-radius: 8px !important;
-                        background: white !important;
-                    }
-
-                    /* Stat block items */
-                    .grid-cols-2 {
-                        display: flex !important;
-                        flex-wrap: wrap !important;
-                        gap: 12px !important;
-                        margin-bottom: 25px !important;
-                    }
-                    .grid-cols-2 > div {
-                        flex: 1 1 18% !important;
-                        min-width: 125px !important;
-                        border: 1px solid #cbd5e1 !important;
-                        background: #f8fafc !important;
-                        padding: 12px !important;
-                        border-radius: 6px !important;
+                        padding: 12mm 15mm !important;
                     }
 
                     /* Tables */
@@ -339,13 +318,18 @@ const AdminReports = () => {
                     }
                     th, td {
                         border: 1px solid #cbd5e1 !important;
-                        padding: 6px 12px !important;
-                        font-size: 11px !important;
+                        padding: 5px 10px !important;
+                        font-size: 10px !important;
                         color: black !important;
                     }
                     th {
                         background-color: #f1f5f9 !important;
                         font-weight: bold !important;
+                    }
+
+                    /* Hide filter bar inside the card */
+                    #print-student-table .no-print {
+                        display: none !important;
                     }
                 }
             ` }} />
@@ -410,7 +394,7 @@ const AdminReports = () => {
                 </Card>
 
                 {/* ── Summary Stats ───────────────────────────────────────────────── */}
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 no-print">
                     {[
                         { label: "Total Students", value: stats.total, icon: Users, color: "text-foreground", bg: "bg-muted" },
                         { label: "Present", value: stats.present, icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50" },
@@ -433,7 +417,7 @@ const AdminReports = () => {
                 </div>
 
                 {/* ── Charts ──────────────────────────────────────────────────────── */}
-                <div className="grid lg:grid-cols-5 gap-6">
+                <div className="grid lg:grid-cols-5 gap-6 no-print">
                     {/* Pie chart */}
                     <Card className="lg:col-span-2 shadow-card">
                         <CardHeader className="pb-2">
@@ -483,6 +467,23 @@ const AdminReports = () => {
                 </div>
 
                 {/* ── Student Table ────────────────────────────────────────────────── */}
+                <div id="print-student-table">
+
+                {/* Print-only header: shown only when printing */}
+                <div id="print-header" style={{ display: 'none' }} className="print-only">
+                    <h1 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '4px' }}>
+                        Attendance Report — {selectedEvent ? selectedEvent.name : 'All Events'}
+                    </h1>
+                    {selectedEvent && (
+                        <p style={{ fontSize: '11px', color: '#555', marginBottom: '4px' }}>
+                            📅 {selectedEvent.date} &nbsp;|&nbsp; 🕐 {selectedEvent.time} &nbsp;|&nbsp; 📍 {selectedEvent.location}
+                        </p>
+                    )}
+                    <p style={{ fontSize: '11px', color: '#555', marginBottom: '12px' }}>
+                        Total: {stats.total} &nbsp;|&nbsp; Present: {stats.present} &nbsp;|&nbsp; Late: {stats.late} &nbsp;|&nbsp; Absent: {stats.absent} &nbsp;|&nbsp; Rate: {stats.rate}%
+                    </p>
+                </div>
+
                 <Card className="shadow-card">
                     <CardHeader className="pb-3 px-6 border-b">
                         <div className="flex items-center justify-between">
@@ -595,7 +596,8 @@ const AdminReports = () => {
                                         <TableHead>Section</TableHead>
                                         <TableHead>Gender</TableHead>
                                         <TableHead>Status</TableHead>
-                                        <TableHead>Time</TableHead>
+                                        <TableHead>Date Scanned</TableHead>
+                                        <TableHead>Time Scanned</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -619,12 +621,13 @@ const AdminReports = () => {
                                                         {row.status}
                                                     </span>
                                                 </TableCell>
+                                                <TableCell className="text-muted-foreground text-sm">{row.date}</TableCell>
                                                 <TableCell className="text-muted-foreground text-sm">{row.time}</TableCell>
                                             </TableRow>
                                         ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                                            <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                                                 No records match your filters.
                                             </TableCell>
                                         </TableRow>
@@ -634,6 +637,7 @@ const AdminReports = () => {
                         </div>
                     </CardContent>
                 </Card>
+                </div> {/* end #print-student-table */}
             </div>
         </DashboardLayout>
     );
