@@ -59,21 +59,6 @@ const AdminReports = () => {
     const [statusFilter, setStatusFilter] = useState("all");
     const [searchQuery, setSearchQuery] = useState("");
     const [courseSections, setCourseSections] = useState<Record<string, Record<string, string[]>>>({});
-    const [sortField, setSortField] = useState<"name" | "course" | "yearLevel" | "section" | null>("name");
-    const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-
-    const handleSort = (field: "name" | "course" | "yearLevel" | "section") => {
-        if (sortField === field) {
-            if (sortOrder === "asc") {
-                setSortOrder("desc");
-            } else {
-                setSortField(null);
-            }
-        } else {
-            setSortField(field);
-            setSortOrder("asc");
-        }
-    };
 
     // ── Load data ──────────────────────────────────────────────────────────────
     useEffect(() => {
@@ -183,17 +168,12 @@ const AdminReports = () => {
         });
     }, [studentRows, statusFilter, searchQuery]);
 
-    // ── Sort filtered rows ─────────────────────────────────────────────────────
+    // ── Sort filtered rows alphabetically by name ──────────────────────────────
     const sortedRows = useMemo(() => {
-        if (!sortField) return filteredRows;
-        return [...filteredRows].sort((a, b) => {
-            const valA = a[sortField] || "";
-            const valB = b[sortField] || "";
-            return sortOrder === "asc"
-                ? valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' })
-                : valB.localeCompare(valA, undefined, { numeric: true, sensitivity: 'base' });
-        });
-    }, [filteredRows, sortField, sortOrder]);
+        return [...filteredRows].sort((a, b) => 
+            a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+        );
+    }, [filteredRows]);
 
     // ── Summary stats ──────────────────────────────────────────────────────────
     const stats = useMemo(() => {
@@ -415,131 +395,6 @@ const AdminReports = () => {
                                     </SelectContent>
                                 </Select>
                             </div>
-                            {/* Course filter */}
-                            <div className="space-y-1">
-                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-                                    <Filter className="h-3 w-3" /> Course
-                                </label>
-                                <Select value={courseFilter} onValueChange={setCourseFilter}>
-                                    <SelectTrigger className="w-40">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {COURSES.map((c) => (
-                                            <SelectItem key={c} value={c}>{c === "all" ? "All Courses" : c}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            {/* Year Level filter */}
-                            <div className="space-y-1">
-                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-                                    <Filter className="h-3 w-3" /> Year
-                                </label>
-                                <Select value={yearFilter} onValueChange={setYearFilter}>
-                                    <SelectTrigger className="w-36">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Years</SelectItem>
-                                        <SelectItem value="1st Year">1st Year</SelectItem>
-                                        <SelectItem value="2nd Year">2nd Year</SelectItem>
-                                        <SelectItem value="3rd Year">3rd Year</SelectItem>
-                                        <SelectItem value="4th Year">4th Year</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            {/* Section filter */}
-                            <div className="space-y-1">
-                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-                                    <Filter className="h-3 w-3" /> Section
-                                </label>
-                                <Select value={sectionFilter} onValueChange={setSectionFilter}>
-                                    <SelectTrigger className="w-36">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {availableSections.map((sec) => (
-                                            <SelectItem key={sec} value={sec}>
-                                                {sec === "all" ? "All Sections" : sec}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            {/* Status filter */}
-                            <div className="space-y-1">
-                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</label>
-                                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                    <SelectTrigger className="w-36">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All Status</SelectItem>
-                                        <SelectItem value="Present">Present</SelectItem>
-                                        <SelectItem value="Late">Late</SelectItem>
-                                        <SelectItem value="Absent">Absent</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            {/* Sort By selector */}
-                            <div className="space-y-1">
-                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-                                    <ArrowUpDown className="h-3 w-3" /> Sort By
-                                </label>
-                                <div className="flex items-center gap-1">
-                                    <Select
-                                        value={sortField || "none"}
-                                        onValueChange={(val) => {
-                                            if (val === "none") {
-                                                setSortField(null);
-                                            } else {
-                                                setSortField(val as "name" | "course" | "yearLevel" | "section");
-                                            }
-                                        }}
-                                    >
-                                        <SelectTrigger className="w-36">
-                                            <SelectValue placeholder="No Sorting" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">No Sorting</SelectItem>
-                                            <SelectItem value="name">Student Name</SelectItem>
-                                            <SelectItem value="course">Course</SelectItem>
-                                            <SelectItem value="yearLevel">Year Level</SelectItem>
-                                            <SelectItem value="section">Section</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    {sortField && (
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="icon"
-                                            className="h-9 w-9 shrink-0"
-                                            onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
-                                            title={`Sort direction: ${sortOrder === "asc" ? "Ascending" : "Descending"}`}
-                                        >
-                                            {sortOrder === "asc" ? (
-                                                <ArrowUp className="h-4 w-4 text-gold" />
-                                            ) : (
-                                                <ArrowDown className="h-4 w-4 text-gold" />
-                                            )}
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                            {/* Search */}
-                            <div className="flex-1 min-w-[180px] space-y-1">
-                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Search</label>
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                    <Input
-                                        placeholder="Name, ID or section…"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="pl-9"
-                                    />
-                                </div>
-                            </div>
                         </div>
 
                         {selectedEvent && (
@@ -629,17 +484,103 @@ const AdminReports = () => {
 
                 {/* ── Student Table ────────────────────────────────────────────────── */}
                 <Card className="shadow-card">
-                    <CardHeader className="pb-3 px-6">
+                    <CardHeader className="pb-3 px-6 border-b">
                         <div className="flex items-center justify-between">
                             <CardTitle className="text-base font-sans">
                                 Student Records
                                 <span className="ml-2 text-sm font-normal text-muted-foreground">
-                                    ({filteredRows.length} of {studentRows.length})
+                                    ({sortedRows.length} of {studentRows.length})
                                 </span>
                             </CardTitle>
                             <Button variant="outline" size="sm" onClick={handleExport}>
                                 <Download className="h-3.5 w-3.5 mr-1.5" /> Download
                             </Button>
+                        </div>
+                        <div className="flex flex-wrap gap-4 items-end mt-4 pt-3 border-t">
+                            {/* Course filter */}
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                                    ▽ Course
+                                </label>
+                                <Select value={courseFilter} onValueChange={setCourseFilter}>
+                                    <SelectTrigger className="w-40 h-9 bg-muted/30">
+                                        <SelectValue placeholder="All Courses" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {COURSES.map((c) => (
+                                            <SelectItem key={c} value={c}>{c === "all" ? "All Courses" : c}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            {/* Year filter */}
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                                    ▽ Year
+                                </label>
+                                <Select value={yearFilter} onValueChange={setYearFilter}>
+                                    <SelectTrigger className="w-36 h-9 bg-muted/30">
+                                        <SelectValue placeholder="All Years" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Years</SelectItem>
+                                        <SelectItem value="1st Year">1st Year</SelectItem>
+                                        <SelectItem value="2nd Year">2nd Year</SelectItem>
+                                        <SelectItem value="3rd Year">3rd Year</SelectItem>
+                                        <SelectItem value="4th Year">4th Year</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            {/* Section filter */}
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                                    ▽ Section
+                                </label>
+                                <Select value={sectionFilter} onValueChange={setSectionFilter}>
+                                    <SelectTrigger className="w-36 h-9 bg-muted/30">
+                                        <SelectValue placeholder="All Sections" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {availableSections.map((sec) => (
+                                            <SelectItem key={sec} value={sec}>
+                                                {sec === "all" ? "All Sections" : sec}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            {/* Status filter */}
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                    Status
+                                </label>
+                                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                    <SelectTrigger className="w-36 h-9 bg-muted/30">
+                                        <SelectValue placeholder="All Status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Status</SelectItem>
+                                        <SelectItem value="Present">Present</SelectItem>
+                                        <SelectItem value="Late">Late</SelectItem>
+                                        <SelectItem value="Absent">Absent</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            {/* Search */}
+                            <div className="flex-1 min-w-[200px] space-y-1">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                    Search
+                                </label>
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Search name, ID or section…"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="pl-9 h-9 bg-muted/30"
+                                    />
+                                </div>
+                            </div>
                         </div>
                     </CardHeader>
                     <CardContent className="p-0">
@@ -648,58 +589,10 @@ const AdminReports = () => {
                                 <TableHeader className="bg-muted/50">
                                     <TableRow>
                                         <TableHead className="px-6">Student ID</TableHead>
-                                        <TableHead 
-                                            className="cursor-pointer hover:bg-muted/80 transition-colors select-none"
-                                            onClick={() => handleSort("name")}
-                                        >
-                                            <div className="flex items-center gap-1">
-                                                Name
-                                                {sortField === "name" ? (
-                                                    sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-gold" /> : <ArrowDown className="h-3.5 w-3.5 text-gold" />
-                                                ) : (
-                                                    <ArrowUpDown className="h-3 w-3 text-muted-foreground/40" />
-                                                )}
-                                            </div>
-                                        </TableHead>
-                                        <TableHead 
-                                            className="cursor-pointer hover:bg-muted/80 transition-colors select-none"
-                                            onClick={() => handleSort("course")}
-                                        >
-                                            <div className="flex items-center gap-1">
-                                                Course
-                                                {sortField === "course" ? (
-                                                    sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-gold" /> : <ArrowDown className="h-3.5 w-3.5 text-gold" />
-                                                ) : (
-                                                    <ArrowUpDown className="h-3 w-3 text-muted-foreground/40" />
-                                                )}
-                                            </div>
-                                        </TableHead>
-                                        <TableHead 
-                                            className="cursor-pointer hover:bg-muted/80 transition-colors select-none"
-                                            onClick={() => handleSort("yearLevel")}
-                                        >
-                                            <div className="flex items-center gap-1">
-                                                Year
-                                                {sortField === "yearLevel" ? (
-                                                    sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-gold" /> : <ArrowDown className="h-3.5 w-3.5 text-gold" />
-                                                ) : (
-                                                    <ArrowUpDown className="h-3 w-3 text-muted-foreground/40" />
-                                                )}
-                                            </div>
-                                        </TableHead>
-                                        <TableHead 
-                                            className="cursor-pointer hover:bg-muted/80 transition-colors select-none"
-                                            onClick={() => handleSort("section")}
-                                        >
-                                            <div className="flex items-center gap-1">
-                                                Section
-                                                {sortField === "section" ? (
-                                                    sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-gold" /> : <ArrowDown className="h-3.5 w-3.5 text-gold" />
-                                                ) : (
-                                                    <ArrowUpDown className="h-3 w-3 text-muted-foreground/40" />
-                                                )}
-                                            </div>
-                                        </TableHead>
+                                        <TableHead>Name</TableHead>
+                                        <TableHead>Course</TableHead>
+                                        <TableHead>Year</TableHead>
+                                        <TableHead>Section</TableHead>
                                         <TableHead>Gender</TableHead>
                                         <TableHead>Status</TableHead>
                                         <TableHead>Time</TableHead>
