@@ -1,10 +1,5 @@
 {
   "expo": {
-    "extra": {
-      "eas": {
-        "projectId": "958a78e5-75fa-401e-a912-1219237da011"
-      }
-    },
     "android": {
       "package": "com.jaicute.vite_react_shadcn_ts"
     },

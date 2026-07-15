@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import {
     BarChart3, Download, Search, Filter, Calendar, Users,
     CheckCircle2, Clock, XCircle, FileSpreadsheet, ChevronDown, Printer,
+    ArrowUpDown, ArrowUp, ArrowDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,6 +59,21 @@ const AdminReports = () => {
     const [statusFilter, setStatusFilter] = useState("all");
     const [searchQuery, setSearchQuery] = useState("");
     const [courseSections, setCourseSections] = useState<Record<string, Record<string, string[]>>>({});
+    const [sortField, setSortField] = useState<"name" | "course" | "yearLevel" | "section" | null>("name");
+    const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+
+    const handleSort = (field: "name" | "course" | "yearLevel" | "section") => {
+        if (sortField === field) {
+            if (sortOrder === "asc") {
+                setSortOrder("desc");
+            } else {
+                setSortField(null);
+            }
+        } else {
+            setSortField(field);
+            setSortOrder("asc");
+        }
+    };
 
     // ── Load data ──────────────────────────────────────────────────────────────
     useEffect(() => {
@@ -167,6 +183,18 @@ const AdminReports = () => {
         });
     }, [studentRows, statusFilter, searchQuery]);
 
+    // ── Sort filtered rows ─────────────────────────────────────────────────────
+    const sortedRows = useMemo(() => {
+        if (!sortField) return filteredRows;
+        return [...filteredRows].sort((a, b) => {
+            const valA = a[sortField] || "";
+            const valB = b[sortField] || "";
+            return sortOrder === "asc"
+                ? valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' })
+                : valB.localeCompare(valA, undefined, { numeric: true, sensitivity: 'base' });
+        });
+    }, [filteredRows, sortField, sortOrder]);
+
     // ── Summary stats ──────────────────────────────────────────────────────────
     const stats = useMemo(() => {
         const total = studentRows.length;
@@ -237,7 +265,7 @@ const AdminReports = () => {
         sections.push({
             title: "Attendance Data",
             headers: ["Student ID", "Full Name", "Course", "Year Level", "Section", "Gender", "Status", "Time"],
-            rows: filteredRows.map((r) => [
+            rows: sortedRows.map((r) => [
                 r.studentId, r.name, r.course, r.yearLevel, r.section, r.gender, r.status, r.time,
             ])
         });
@@ -454,6 +482,51 @@ const AdminReports = () => {
                                     </SelectContent>
                                 </Select>
                             </div>
+                            {/* Sort By selector */}
+                            <div className="space-y-1">
+                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                                    <ArrowUpDown className="h-3 w-3" /> Sort By
+                                </label>
+                                <div className="flex items-center gap-1">
+                                    <Select
+                                        value={sortField || "none"}
+                                        onValueChange={(val) => {
+                                            if (val === "none") {
+                                                setSortField(null);
+                                            } else {
+                                                setSortField(val as "name" | "course" | "yearLevel" | "section");
+                                            }
+                                        }}
+                                    >
+                                        <SelectTrigger className="w-36">
+                                            <SelectValue placeholder="No Sorting" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">No Sorting</SelectItem>
+                                            <SelectItem value="name">Student Name</SelectItem>
+                                            <SelectItem value="course">Course</SelectItem>
+                                            <SelectItem value="yearLevel">Year Level</SelectItem>
+                                            <SelectItem value="section">Section</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    {sortField && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="icon"
+                                            className="h-9 w-9 shrink-0"
+                                            onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+                                            title={`Sort direction: ${sortOrder === "asc" ? "Ascending" : "Descending"}`}
+                                        >
+                                            {sortOrder === "asc" ? (
+                                                <ArrowUp className="h-4 w-4 text-gold" />
+                                            ) : (
+                                                <ArrowDown className="h-4 w-4 text-gold" />
+                                            )}
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
                             {/* Search */}
                             <div className="flex-1 min-w-[180px] space-y-1">
                                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Search</label>
@@ -575,18 +648,66 @@ const AdminReports = () => {
                                 <TableHeader className="bg-muted/50">
                                     <TableRow>
                                         <TableHead className="px-6">Student ID</TableHead>
-                                        <TableHead>Name</TableHead>
-                                        <TableHead>Course</TableHead>
-                                        <TableHead>Year</TableHead>
-                                        <TableHead>Section</TableHead>
+                                        <TableHead 
+                                            className="cursor-pointer hover:bg-muted/80 transition-colors select-none"
+                                            onClick={() => handleSort("name")}
+                                        >
+                                            <div className="flex items-center gap-1">
+                                                Name
+                                                {sortField === "name" ? (
+                                                    sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-gold" /> : <ArrowDown className="h-3.5 w-3.5 text-gold" />
+                                                ) : (
+                                                    <ArrowUpDown className="h-3 w-3 text-muted-foreground/40" />
+                                                )}
+                                            </div>
+                                        </TableHead>
+                                        <TableHead 
+                                            className="cursor-pointer hover:bg-muted/80 transition-colors select-none"
+                                            onClick={() => handleSort("course")}
+                                        >
+                                            <div className="flex items-center gap-1">
+                                                Course
+                                                {sortField === "course" ? (
+                                                    sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-gold" /> : <ArrowDown className="h-3.5 w-3.5 text-gold" />
+                                                ) : (
+                                                    <ArrowUpDown className="h-3 w-3 text-muted-foreground/40" />
+                                                )}
+                                            </div>
+                                        </TableHead>
+                                        <TableHead 
+                                            className="cursor-pointer hover:bg-muted/80 transition-colors select-none"
+                                            onClick={() => handleSort("yearLevel")}
+                                        >
+                                            <div className="flex items-center gap-1">
+                                                Year
+                                                {sortField === "yearLevel" ? (
+                                                    sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-gold" /> : <ArrowDown className="h-3.5 w-3.5 text-gold" />
+                                                ) : (
+                                                    <ArrowUpDown className="h-3 w-3 text-muted-foreground/40" />
+                                                )}
+                                            </div>
+                                        </TableHead>
+                                        <TableHead 
+                                            className="cursor-pointer hover:bg-muted/80 transition-colors select-none"
+                                            onClick={() => handleSort("section")}
+                                        >
+                                            <div className="flex items-center gap-1">
+                                                Section
+                                                {sortField === "section" ? (
+                                                    sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-gold" /> : <ArrowDown className="h-3.5 w-3.5 text-gold" />
+                                                ) : (
+                                                    <ArrowUpDown className="h-3 w-3 text-muted-foreground/40" />
+                                                )}
+                                            </div>
+                                        </TableHead>
                                         <TableHead>Gender</TableHead>
                                         <TableHead>Status</TableHead>
                                         <TableHead>Time</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {filteredRows.length > 0 ? (
-                                        filteredRows.map((row) => (
+                                    {sortedRows.length > 0 ? (
+                                        sortedRows.map((row) => (
                                             <TableRow key={row.studentId} className="hover:bg-muted/30 transition-colors">
                                                 <TableCell className="px-6 font-mono text-sm text-gold">{row.studentId}</TableCell>
                                                 <TableCell className="font-semibold">{row.name}</TableCell>

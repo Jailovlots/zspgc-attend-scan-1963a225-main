@@ -33,7 +33,6 @@
         "android.permission.RECORD_AUDIO"
       ]
     },
-
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
@@ -65,7 +64,7 @@
         "origin": false
       },
       "eas": {
-        "projectId": "ffc30b33-51f3-4d93-b766-0047c0db988c"
+        "projectId": "60e9c7e8-87b7-4c1b-83ff-9670b9257a79"
       }
     }
   }
