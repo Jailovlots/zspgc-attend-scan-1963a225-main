@@ -139,7 +139,7 @@ const Login = () => {
               <Input
                 id="loginId"
                 type="email"
-                placeholder={role === "admin" ? "admin@zdspgc.edu.ph" : "student@zdspgc.edu.ph"}
+                placeholder="Enter your email address"
                 value={loginId}
                 onChange={(e) => setLoginId(e.target.value)}
                 required
@@ -174,14 +174,6 @@ const Login = () => {
               {isLoading ? "Signing In..." : "Sign In"}
             </Button>
           </form>
-
-          {/* Admin credentials hint */}
-          {role === "admin" && (
-            <p className="text-center text-xs text-muted-foreground mt-4 border-t pt-3">
-              Default admin: <span className="font-mono font-semibold">admin@zdspgc.edu.ph</span> /{" "}
-              <span className="font-mono font-semibold">admin123</span>
-            </p>
-          )}
 
           <p className="text-center text-sm text-muted-foreground mt-6">
             Don't have an account?{" "}

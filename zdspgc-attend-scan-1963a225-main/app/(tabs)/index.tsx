@@ -10,20 +10,32 @@ import Constants from 'expo-constants';
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
+ * Render deploy URL — the hosted web app & API backend.
+ * Change this whenever the deployment URL changes.
+ */
+const DEPLOY_URL = 'https://zspgc-attend-scan-1963a225-main-6.onrender.com';
+
+/**
  * Resolve the web server URI.
- * On a physical device Expo sets hostUri to "192.168.x.x:8081" (Metro port).
- * Our web app runs on port 3005 on the SAME machine, so we swap the port.
+ * - Production (EAS build / standalone): always uses the Render deploy URL.
+ * - Dev mode (__DEV__): uses the local machine's LAN IP so hot-reload still works.
  */
 const getTargetUri = (): string => {
   if (Platform.OS === 'web') {
+    // Running inside a browser — use the current origin
     if (typeof window !== 'undefined') {
       const { protocol, hostname, port } = window.location;
       return `${protocol}//${hostname}:${port || '3005'}`;
     }
-    return 'http://localhost:3005';
+    return DEPLOY_URL;
   }
 
-  // Try to pull the dev machine's LAN IP from Expo's hostUri
+  // In a production / EAS build always point to the deployed server
+  if (!__DEV__) {
+    return DEPLOY_URL;
+  }
+
+  // ── Dev mode only: try to resolve the local Metro host ──────────────────
   const hostUri = Constants.expoConfig?.hostUri ?? '';
   const hostIp = hostUri.split(':')[0];
 

@@ -187,13 +187,13 @@ export const initDb = async () => {
       console.log('Default system settings initialized');
     }
 
-    // 6. Automated Admin Seeding — always upsert to keep password in sync
-    const adminEmail = 'admin@zdspgc.edu.ph';
-    const adminPassword = 'admin123';
-    const adminName = 'System Admin';
-    const adminRole = 'superadmin';
+    // 6. Automated Admin Seeding — always upsert to keep password in sync with .env
+    const adminEmail    = process.env.ADMIN_EMAIL    || 'admin@zdspgc.edu.ph';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    const adminName     = process.env.ADMIN_NAME     || 'System Admin';
+    const adminRole     = 'superadmin';
 
-    console.log('Upserting default superadmin account...');
+    console.log(`Upserting superadmin account (${adminEmail})...`);
     await db.query(`
       INSERT INTO admins (name, email, role, password, createdat)
       VALUES ($1, $2, $3, $4, $5)
@@ -208,7 +208,7 @@ export const initDb = async () => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       ON CONFLICT (studentid) DO UPDATE SET password = $10, email = $4
     `, ['ADMIN-001', 'System', 'Admin', adminEmail, 'N/A', 'N/A', 'N/A', 'Male', 'admin', adminPassword]);
-    console.log('Admin credentials synced successfully.');
+    console.log('Admin credentials synced to database successfully.');
 
     // 7. Seed initial courses if empty
     const courseCheck = await db.query('SELECT 1 FROM courses LIMIT 1');
