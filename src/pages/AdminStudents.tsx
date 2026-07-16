@@ -41,7 +41,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import DashboardLayout from "@/components/DashboardLayout";
-import { getAllStudents, saveUser, deleteUser, StudentUser, getCourseSections, updateStudent, getSession, getQualifiedStudents, importQualifiedStudents, deleteQualifiedStudent, QualifiedStudent } from "@/lib/auth";
+import { getAllStudents, saveUser, deleteUser, StudentUser, getCourseSections, updateStudent, getSession, getQualifiedStudents, importQualifiedStudents, deleteQualifiedStudent, clearQualifiedStudents, QualifiedStudent } from "@/lib/auth";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
@@ -64,6 +64,7 @@ const AdminStudents = () => {
 
     // Qualified Students State
     const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+    const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
     const [qualifiedStudents, setQualifiedStudents] = useState<QualifiedStudent[]>([]);
     const [qualifiedSearchQuery, setQualifiedSearchQuery] = useState("");
     const [isImporting, setIsImporting] = useState(false);
@@ -146,85 +147,58 @@ const AdminStudents = () => {
         // Reset the input so the same file can be re-uploaded if needed
         e.target.value = "";
 
-        const isExcel = /\.(xlsx|xls)$/i.test(file.name);
-
         const reader = new FileReader();
         reader.onload = (event) => {
             const buffer = event.target?.result as ArrayBuffer;
             if (!buffer) return;
 
-            if (isExcel) {
-                // --- Excel path (SheetJS) ---
-                try {
-                    const workbook = XLSX.read(buffer, { type: "array" });
-                    const sheetName = workbook.SheetNames[0];
-                    const sheet = workbook.Sheets[sheetName];
-                    // Convert sheet to 2-D array of raw values
-                    const rows: (string | number | null | undefined)[][] =
-                        XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+            try {
+                // SheetJS XLSX.read handles both Excel (.xlsx/.xls) and CSV (.csv) formats automatically,
+                // including encoding detection (UTF-8, UTF-16, ANSI, etc.) and quoted commas.
+                const workbook = XLSX.read(buffer, { type: "array" });
+                const sheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
+                const rows: (string | number | null | undefined)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
-                    const result: QualifiedStudent[] = [];
-                    for (const row of rows) {
-                        if (!row || row.length < 2) continue;
-                        const studentId = String(row[0] ?? "").trim();
-                        // Everything from column 2 onwards is joined as the name
-                        const name = row
-                            .slice(1)
-                            .map((c) => String(c ?? "").trim())
-                            .filter(Boolean)
-                            .join(" ")
-                            .trim();
+                const result: QualifiedStudent[] = [];
+                for (const row of rows) {
+                    if (!row || row.length < 2) continue;
+                    
+                    const studentId = String(row[0] ?? "").trim();
+                    // Join any additional columns into the name (handles first name, last name split sheets too)
+                    const name = row
+                        .slice(1)
+                        .map((c) => String(c ?? "").trim())
+                        .filter(Boolean)
+                        .join(" ")
+                        .trim();
 
-                        if (!studentId || !name) continue;
+                    if (!studentId || !name) continue;
 
-                        // Skip header rows
-                        const idLower = studentId.toLowerCase();
-                        if (idLower === "student id" || idLower === "studentid" || idLower === "id" || idLower === "no" || idLower === "no.") continue;
-
-                        result.push({ studentId, name });
+                    // Skip header rows
+                    const idLower = studentId.toLowerCase();
+                    if (
+                        idLower === "student id" || 
+                        idLower === "studentid" || 
+                        idLower === "id" || 
+                        idLower === "no" || 
+                        idLower === "no."
+                    ) {
+                        continue;
                     }
 
-                    if (result.length > 0) {
-                        setParsedData(result);
-                        toast.success(`Successfully parsed ${result.length} student records from Excel file.`);
-                    } else {
-                        toast.error("No valid records found. Ensure columns are: Student ID, Name.");
-                    }
-                } catch (err) {
-                    toast.error("Failed to read Excel file. Please make sure it is a valid .xlsx or .xls file.");
-                }
-            } else {
-                // --- CSV path (BOM-aware) ---
-                const bytes = new Uint8Array(buffer);
-                let encoding = "utf-8";
-                let bomOffset = 0;
-
-                if (bytes[0] === 0xFF && bytes[1] === 0xFE) {
-                    encoding = "utf-16le";
-                    bomOffset = 2;
-                } else if (bytes[0] === 0xFE && bytes[1] === 0xFF) {
-                    encoding = "utf-16be";
-                    bomOffset = 2;
-                } else if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
-                    encoding = "utf-8";
-                    bomOffset = 3;
+                    result.push({ studentId, name });
                 }
 
-                const slicedBuffer = buffer.slice(bomOffset);
-                let text: string;
-                try {
-                    text = new TextDecoder(encoding).decode(slicedBuffer);
-                } catch {
-                    text = new TextDecoder("utf-8").decode(slicedBuffer);
-                }
-
-                const parsed = parsePastedData(text);
-                if (parsed.length > 0) {
-                    setParsedData(parsed);
-                    toast.success(`Successfully parsed ${parsed.length} student records from CSV file.`);
+                if (result.length > 0) {
+                    setParsedData(result);
+                    toast.success(`Successfully parsed ${result.length} student records from file.`);
                 } else {
-                    toast.error("No valid records parsed. Ensure format is: Student ID, Name (2 columns, comma or tab separated).");
+                    toast.error("No valid records found. Ensure the file has at least 2 columns: Student ID, Name.");
                 }
+            } catch (err) {
+                console.error("File upload parse error:", err);
+                toast.error("Failed to read file. Please make sure it is a valid Excel (.xlsx/.xls) or CSV file.");
             }
         };
         reader.readAsArrayBuffer(file);
@@ -265,6 +239,22 @@ const AdminStudents = () => {
             }
         } catch (err) {
             toast.error("An error occurred.");
+        }
+    };
+
+    const handleClearQualified = async () => {
+        try {
+            const ok = await clearQualifiedStudents();
+            if (ok) {
+                toast.success("Successfully cleared all qualified student records.");
+                await loadQualifiedStudents();
+            } else {
+                toast.error("Failed to clear qualified student records.");
+            }
+        } catch (err) {
+            toast.error("An error occurred.");
+        } finally {
+            setIsClearConfirmOpen(false);
         }
     };
 
@@ -782,14 +772,27 @@ const AdminStudents = () => {
                         </TabsContent>
 
                         <TabsContent value="manage" className="flex-1 flex flex-col gap-3 overflow-hidden">
-                            <div className="relative">
-                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                                <Input
-                                    placeholder="Search qualified student list..."
-                                    value={qualifiedSearchQuery}
-                                    onChange={(e) => setQualifiedSearchQuery(e.target.value)}
-                                    className="pl-8 h-8 text-xs"
-                                />
+                            <div className="flex gap-2 items-center">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Search qualified student list..."
+                                        value={qualifiedSearchQuery}
+                                        onChange={(e) => setQualifiedSearchQuery(e.target.value)}
+                                        className="pl-8 h-8 text-xs"
+                                    />
+                                </div>
+                                {qualifiedStudents.length > 0 && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setIsClearConfirmOpen(true)}
+                                        className="h-8 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive flex items-center gap-1.5 shrink-0"
+                                    >
+                                        <Trash className="h-3.5 w-3.5" />
+                                        Clear List
+                                    </Button>
+                                )}
                             </div>
 
                             <div className="flex-1 overflow-y-auto border rounded-lg bg-card">
@@ -833,6 +836,25 @@ const AdminStudents = () => {
                     </Tabs>
                 </DialogContent>
             </Dialog>
+            {/* Clear All Confirmation Dialog */}
+            <AlertDialog open={isClearConfirmOpen} onOpenChange={setIsClearConfirmOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will permanently delete all {qualifiedStudents.length} student records from the qualified list.
+                            Authorized students who have not yet registered will not be able to sign up until you upload a new list.
+                            Registered accounts will not be affected.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleClearQualified} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Clear All Records
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </DashboardLayout>
     );
 };

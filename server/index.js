@@ -282,6 +282,15 @@ app.post('/api/qualified-students/import', async (req, res) => {
   }
 });
 
+app.delete('/api/qualified-students', async (req, res) => {
+  try {
+    await db.query('DELETE FROM qualified_students');
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/qualified-students/:studentid', async (req, res) => {
   const { studentid } = req.params;
   try {

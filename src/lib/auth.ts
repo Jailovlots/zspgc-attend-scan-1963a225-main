@@ -328,3 +328,10 @@ export const deleteQualifiedStudent = async (studentId: string): Promise<boolean
   });
   return res.ok;
 };
+
+export const clearQualifiedStudents = async (): Promise<boolean> => {
+  const res = await fetch(`${API_URL}/api/qualified-students`, {
+    method: 'DELETE'
+  });
+  return res.ok;
+};
