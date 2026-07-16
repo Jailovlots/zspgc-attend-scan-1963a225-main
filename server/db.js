@@ -170,6 +170,11 @@ export const initDb = async () => {
         semester TEXT NOT NULL,
         latethreshold TEXT NOT NULL,
         CONSTRAINT one_row CHECK (id = 1)
+      )`,
+      `CREATE TABLE IF NOT EXISTS qualified_students (
+        studentid TEXT PRIMARY KEY,
+        firstname TEXT NOT NULL,
+        lastname TEXT NOT NULL
       )`
     ];
 

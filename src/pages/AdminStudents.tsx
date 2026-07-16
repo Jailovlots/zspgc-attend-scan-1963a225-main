@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Users, Search, Plus, Edit2, Trash2, UserCheck, UserMinus, MoreHorizontal, Filter } from "lucide-react";
+import { Users, Search, Plus, Edit2, Trash2, UserCheck, UserMinus, MoreHorizontal, Filter, Upload, Trash, FileSpreadsheet, Download, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,8 +38,10 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import DashboardLayout from "@/components/DashboardLayout";
-import { getAllStudents, saveUser, deleteUser, StudentUser, getCourseSections, updateStudent, getSession } from "@/lib/auth";
+import { getAllStudents, saveUser, deleteUser, StudentUser, getCourseSections, updateStudent, getSession, getQualifiedStudents, importQualifiedStudents, deleteQualifiedStudent, QualifiedStudent } from "@/lib/auth";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
@@ -59,6 +61,14 @@ const AdminStudents = () => {
     const [editingStudent, setEditingStudent] = useState<StudentUser | null>(null);
     const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
+    // Qualified Students State
+    const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+    const [qualifiedStudents, setQualifiedStudents] = useState<QualifiedStudent[]>([]);
+    const [qualifiedSearchQuery, setQualifiedSearchQuery] = useState("");
+    const [isImporting, setIsImporting] = useState(false);
+    const [pasteData, setPasteData] = useState("");
+    const [parsedData, setParsedData] = useState<QualifiedStudent[]>([]);
+
     // Form State
     const [formData, setFormData] = useState<Partial<StudentUser>>({
         studentId: "",
@@ -71,6 +81,120 @@ const AdminStudents = () => {
         gender: "Male",
         role: "student",
     });
+
+    const loadQualifiedStudents = async () => {
+        try {
+            const data = await getQualifiedStudents();
+            setQualifiedStudents(data);
+        } catch (err) {
+            toast.error("Failed to load qualified student list");
+        }
+    };
+
+    const parsePastedData = (text: string): QualifiedStudent[] => {
+        const lines = text.split("\n");
+        const result: QualifiedStudent[] = [];
+        
+        for (let line of lines) {
+            line = line.trim();
+            if (!line) continue;
+            
+            // Skip header row
+            if (line.toLowerCase().includes("student id") || line.toLowerCase().includes("studentid") || line.toLowerCase().includes("first name")) {
+                continue;
+            }
+            
+            // Try splitting by tab first, then comma
+            let parts = line.split("\t");
+            if (parts.length < 3) {
+                parts = line.split(",");
+            }
+            
+            if (parts.length >= 3) {
+                const studentId = parts[0].trim();
+                const firstName = parts[1].trim();
+                const lastName = parts[2].trim();
+                if (studentId && firstName && lastName) {
+                    result.push({ studentId, firstName, lastName });
+                }
+            }
+        }
+        return result;
+    };
+
+    const handlePasteChange = (val: string) => {
+        setPasteData(val);
+        const parsed = parsePastedData(val);
+        setParsedData(parsed);
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const text = event.target?.result as string;
+            if (text) {
+                const parsed = parsePastedData(text);
+                if (parsed.length > 0) {
+                    setParsedData(parsed);
+                    toast.success(`Successfully parsed ${parsed.length} student records from CSV file.`);
+                } else {
+                    toast.error("No valid records parsed. Ensure format is: Student ID, First Name, Last Name.");
+                }
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    const handleImportConfirm = async () => {
+        if (parsedData.length === 0) {
+            toast.error("No student records to import.");
+            return;
+        }
+        
+        setIsImporting(true);
+        try {
+            const res = await importQualifiedStudents(parsedData);
+            if (res.ok) {
+                toast.success(`Successfully imported ${res.count} qualified students!`);
+                setPasteData("");
+                setParsedData([]);
+                await loadQualifiedStudents();
+            } else {
+                toast.error(res.error || "Failed to import qualified student IDs");
+            }
+        } catch (err) {
+            toast.error("An error occurred during import.");
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
+    const handleDeleteQualified = async (studentId: string) => {
+        try {
+            const ok = await deleteQualifiedStudent(studentId);
+            if (ok) {
+                toast.success(`Removed Student ID ${studentId} from qualified list.`);
+                await loadQualifiedStudents();
+            } else {
+                toast.error("Failed to remove student ID.");
+            }
+        } catch (err) {
+            toast.error("An error occurred.");
+        }
+    };
+
+    const filteredQualifiedStudents = useMemo(() => {
+        return qualifiedStudents.filter((s) => {
+            return (
+                (s.studentId ?? "").toLowerCase().includes(qualifiedSearchQuery.toLowerCase()) ||
+                (s.firstName ?? "").toLowerCase().includes(qualifiedSearchQuery.toLowerCase()) ||
+                (s.lastName ?? "").toLowerCase().includes(qualifiedSearchQuery.toLowerCase())
+            );
+        });
+    }, [qualifiedStudents, qualifiedSearchQuery]);
 
     useEffect(() => {
         if (!session || session.role !== "admin") {
@@ -88,6 +212,7 @@ const AdminStudents = () => {
                 ]);
                 setStudents(data);
                 setCourseSections(sections);
+                await loadQualifiedStudents();
             } catch (err) {
                 toast.error("Failed to load student data");
             } finally {
@@ -174,13 +299,13 @@ const AdminStudents = () => {
                     toast.error(result.error || "Failed to update student");
                 }
             } else {
-                const success = await saveUser(formData as StudentUser);
-                if (success) {
+                const result = await saveUser({ ...formData, bypassQualification: true } as StudentUser);
+                if (result.ok) {
                     await loadStudents();
                     setIsAddDialogOpen(false);
                     toast.success("Student added successfully");
                 } else {
-                    toast.error("Failed to add student (ID may already exist)");
+                    toast.error(result.error || "Failed to add student (ID may already exist)");
                 }
             }
         } catch (err) {
@@ -212,9 +337,14 @@ const AdminStudents = () => {
                         </h1>
                         <p className="text-muted-foreground text-sm mt-1">View and manage all registered students</p>
                     </div>
-                    <Button onClick={handleAddClick} className="bg-gold text-gold-foreground hover:bg-gold/90">
-                        <Plus className="h-4 w-4 mr-2" /> Add Student
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <Button onClick={() => setIsImportDialogOpen(true)} variant="outline" className="border-gold text-gold hover:bg-gold/10 hover:text-gold">
+                            <Upload className="h-4 w-4 mr-2" /> Import IDs
+                        </Button>
+                        <Button onClick={handleAddClick} className="bg-gold text-gold-foreground hover:bg-gold/90">
+                            <Plus className="h-4 w-4 mr-2" /> Add Student
+                        </Button>
+                    </div>
                 </div>
 
                 <Card className="shadow-card">
@@ -459,6 +589,173 @@ const AdminStudents = () => {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* Import & Manage Qualified Student IDs Dialog */}
+            <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+                <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-6 overflow-hidden">
+                    <DialogHeader className="pb-2">
+                        <DialogTitle className="text-xl font-display font-bold flex items-center gap-2">
+                            <FileSpreadsheet className="h-5 w-5 text-gold" />
+                            Qualified Student IDs
+                        </DialogTitle>
+                        <DialogDescription>
+                            Import and manage student IDs authorized to register accounts. Students cannot sign up if their ID and name do not match this list.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <Tabs defaultValue="import" className="flex-1 flex flex-col overflow-hidden">
+                        <TabsList className="grid w-full grid-cols-2 mb-4">
+                            <TabsTrigger value="import" className="flex items-center gap-2">
+                                <Upload className="h-4 w-4" /> Import list
+                            </TabsTrigger>
+                            <TabsTrigger value="manage" className="flex items-center gap-2" onClick={loadQualifiedStudents}>
+                                <Users className="h-4 w-4" /> Current list ({qualifiedStudents.length})
+                            </TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="import" className="flex-1 flex flex-col gap-4 overflow-y-auto pr-1">
+                            <div className="bg-muted/40 border rounded-lg p-3 text-xs flex gap-2.5 items-start">
+                                <Info className="h-4 w-4 text-gold shrink-0 mt-0.5" />
+                                <div>
+                                    <span className="font-semibold block mb-0.5">Import Format Requirements:</span>
+                                    Provide records with three columns: <strong className="text-foreground">Student ID</strong>, <strong className="text-foreground">First Name</strong>, and <strong className="text-foreground">Last Name</strong>. 
+                                    Columns can be separated by commas (CSV) or tabs (Excel copy-paste). Casing will be normalized automatically.
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-3">
+                                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Option A: Upload CSV File</Label>
+                                    <div className="border border-dashed border-muted-foreground/30 hover:border-gold/50 rounded-lg p-4 transition-colors flex flex-col items-center justify-center gap-2 text-center bg-card">
+                                        <Upload className="h-8 w-8 text-muted-foreground/60" />
+                                        <div className="text-xs">
+                                            <label htmlFor="csv-upload" className="cursor-pointer font-semibold text-gold hover:underline">
+                                                Click to upload CSV
+                                            </label>
+                                            <p className="text-muted-foreground mt-0.5">or drag and drop here</p>
+                                        </div>
+                                        <input 
+                                            id="csv-upload" 
+                                            type="file" 
+                                            accept=".csv" 
+                                            className="hidden" 
+                                            onChange={handleFileUpload} 
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Option B: Paste Records</Label>
+                                    <Textarea
+                                        placeholder="2024-00001, Juan, Dela Cruz&#10;2024-00002, Maria, Santos"
+                                        value={pasteData}
+                                        onChange={(e) => handlePasteChange(e.target.value)}
+                                        className="h-28 text-xs font-mono"
+                                    />
+                                </div>
+                            </div>
+
+                            {parsedData.length > 0 && (
+                                <div className="space-y-2 flex-1 flex flex-col min-h-[180px] overflow-hidden border rounded-lg bg-card">
+                                    <div className="px-3 py-2 bg-muted/50 border-b flex justify-between items-center">
+                                        <span className="text-xs font-bold text-foreground">Parsed Preview ({parsedData.length} records)</span>
+                                        <Button variant="ghost" onClick={() => { setPasteData(""); setParsedData([]); }} className="h-6 text-[10px] text-muted-foreground hover:text-destructive px-2">
+                                            Clear
+                                        </Button>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto">
+                                        <Table>
+                                            <TableHeader className="bg-muted/30 sticky top-0">
+                                                <TableRow>
+                                                    <TableHead className="py-1.5 px-3 text-xs">Student ID</TableHead>
+                                                    <TableHead className="py-1.5 px-3 text-xs">First Name</TableHead>
+                                                    <TableHead className="py-1.5 px-3 text-xs">Last Name</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {parsedData.map((row, idx) => (
+                                                    <TableRow key={idx} className="hover:bg-muted/10">
+                                                        <TableCell className="py-1 px-3 font-mono text-xs">{row.studentId}</TableCell>
+                                                        <TableCell className="py-1 px-3 text-xs">{row.firstName}</TableCell>
+                                                        <TableCell className="py-1 px-3 text-xs">{row.lastName}</TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-2 pt-2 border-t mt-auto">
+                                <Button type="button" variant="outline" size="sm" onClick={() => setIsImportDialogOpen(false)}>
+                                    Cancel
+                                </Button>
+                                <Button 
+                                    type="button" 
+                                    disabled={isImporting || parsedData.length === 0} 
+                                    onClick={handleImportConfirm}
+                                    className="bg-gold text-gold-foreground hover:bg-gold/90"
+                                    size="sm"
+                                >
+                                    {isImporting ? "Importing..." : `Import (${parsedData.length}) Records`}
+                                </Button>
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="manage" className="flex-1 flex flex-col gap-3 overflow-hidden">
+                            <div className="relative">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                <Input
+                                    placeholder="Search qualified student list..."
+                                    value={qualifiedSearchQuery}
+                                    onChange={(e) => setQualifiedSearchQuery(e.target.value)}
+                                    className="pl-8 h-8 text-xs"
+                                />
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto border rounded-lg bg-card">
+                                <Table>
+                                    <TableHeader className="bg-muted/40 sticky top-0">
+                                        <TableRow>
+                                            <TableHead className="h-8 px-4 text-xs">Student ID</TableHead>
+                                            <TableHead className="h-8 px-4 text-xs">First Name</TableHead>
+                                            <TableHead className="h-8 px-4 text-xs">Last Name</TableHead>
+                                            <TableHead className="h-8 px-4 text-right text-xs">Action</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {filteredQualifiedStudents.length > 0 ? (
+                                            filteredQualifiedStudents.map((row) => (
+                                                <TableRow key={row.studentId} className="hover:bg-muted/20">
+                                                    <TableCell className="py-1.5 px-4 font-mono text-xs">{row.studentId}</TableCell>
+                                                    <TableCell className="py-1.5 px-4 text-xs">{row.firstName}</TableCell>
+                                                    <TableCell className="py-1.5 px-4 text-xs">{row.lastName}</TableCell>
+                                                    <TableCell className="py-1.5 px-4 text-right">
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                                            onClick={() => handleDeleteQualified(row.studentId)}
+                                                        >
+                                                            <Trash className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        ) : (
+                                            <TableRow>
+                                                <TableCell colSpan={4} className="text-center py-8 text-muted-foreground text-xs italic">
+                                                    No qualified student records found.
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </TabsContent>
+                    </Tabs>
+                </DialogContent>
+            </Dialog>
         </DashboardLayout>
     );
 };

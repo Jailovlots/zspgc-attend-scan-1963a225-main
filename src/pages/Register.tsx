@@ -67,7 +67,7 @@ const Register = () => {
 
     setIsSubmitting(true);
     try {
-      const success = await saveUser({
+      const result = await saveUser({
         studentId: form.studentId,
         firstName: form.firstName,
         lastName: form.lastName,
@@ -80,11 +80,11 @@ const Register = () => {
         password: form.password,
       });
 
-      if (success) {
+      if (result.ok) {
         toast({ title: "Registration successful!", description: "You can now log in." });
         navigate("/login");
       } else {
-        toast({ title: "Registration failed", description: "Check if the Student ID is already taken.", variant: "destructive" });
+        toast({ title: "Registration failed", description: result.error || "Check if the Student ID is already taken.", variant: "destructive" });
       }
     } catch (error) {
       toast({ title: "Server Error", description: "Could not connect to the backend.", variant: "destructive" });

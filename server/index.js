@@ -166,6 +166,45 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/register', async (req, res) => {
   const u = req.body;
   try {
+    // Check if we should enforce qualified student ID validation
+    if (!u.bypassQualification) {
+      // 1. Verify student ID exists in the qualified list
+      const qualifiedResult = await db.query(
+        'SELECT * FROM qualified_students WHERE LOWER(TRIM(studentid)) = LOWER(TRIM($1))',
+        [u.studentId]
+      );
+
+      if (qualifiedResult.rows.length === 0) {
+        return res.status(400).json({
+          error: `Student ID "${u.studentId}" is not in the list of qualified student IDs. Please contact the administrator.`
+        });
+      }
+
+      const qualified = qualifiedResult.rows[0];
+      const dbFirst = (qualified.firstname || '').trim().toLowerCase();
+      const dbLast = (qualified.lastname || '').trim().toLowerCase();
+      const inputFirst = (u.firstName || '').trim().toLowerCase();
+      const inputLast = (u.lastName || '').trim().toLowerCase();
+
+      // 2. Verify that both the first name and last name match the qualified record (case-insensitive)
+      if (dbFirst !== inputFirst || dbLast !== inputLast) {
+        return res.status(400).json({
+          error: `The provided name (${u.firstName} ${u.lastName}) does not match the official record for Student ID "${u.studentId}".`
+        });
+      }
+    }
+
+    // 3. Check if an account is already registered for this student ID to prevent multiple account creations
+    const existingUser = await db.query(
+      'SELECT 1 FROM users WHERE LOWER(TRIM(studentid)) = LOWER(TRIM($1))',
+      [u.studentId]
+    );
+    if (existingUser.rows.length > 0) {
+      return res.status(400).json({
+        error: `An account is already registered under Student ID "${u.studentId}".`
+      });
+    }
+
     await db.query(`
       INSERT INTO users (
         studentid, firstname, lastname, middlename, suffix, email, 
@@ -187,10 +226,63 @@ app.post('/api/register', async (req, res) => {
   } catch (err) {
     // PostgreSQL unique violation error code is 23505
     if (err.code === '23505') {
-      res.status(400).json({ error: 'User with this ID already exists.' });
+      res.status(400).json({ error: 'User with this Student ID already exists.' });
     } else {
       res.status(400).json({ error: err.message });
     }
+  }
+});
+
+// --- Qualified Students API ---
+app.get('/api/qualified-students', async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM qualified_students ORDER BY studentid ASC');
+    res.json(result.rows.map(row => ({
+      studentId: row.studentid,
+      firstName: row.firstname,
+      lastName: row.lastname
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/qualified-students/import', async (req, res) => {
+  const list = req.body;
+  if (!Array.isArray(list)) {
+    return res.status(400).json({ error: 'Payload must be an array of student records.' });
+  }
+
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    for (const item of list) {
+      if (!item.studentId || !item.firstName || !item.lastName) {
+        throw new Error(`Invalid record details: ${JSON.stringify(item)}. All fields (studentId, firstName, lastName) are required.`);
+      }
+      await client.query(`
+        INSERT INTO qualified_students (studentid, firstname, lastname)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (studentid) DO UPDATE SET firstname = $2, lastname = $3
+      `, [item.studentId.trim(), item.firstName.trim(), item.lastName.trim()]);
+    }
+    await client.query('COMMIT');
+    res.json({ success: true, count: list.length });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/qualified-students/:studentid', async (req, res) => {
+  const { studentid } = req.params;
+  try {
+    await db.query('DELETE FROM qualified_students WHERE LOWER(TRIM(studentid)) = LOWER(TRIM($1))', [studentid]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

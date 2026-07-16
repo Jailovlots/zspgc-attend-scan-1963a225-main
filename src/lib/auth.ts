@@ -81,13 +81,15 @@ export const getStudentProfile = async (id: string): Promise<StudentUser | null>
   return res.ok ? await res.json() : null;
 };
 
-export const saveUser = async (user: StudentUser) => {
+export const saveUser = async (user: StudentUser & { bypassQualification?: boolean }): Promise<{ ok: boolean; error?: string }> => {
   const res = await fetch(`${API_URL}/api/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(user)
   });
-  return res.ok;
+  if (res.ok) return { ok: true };
+  const body = await res.json().catch(() => ({}));
+  return { ok: false, error: body?.error || 'Registration failed' };
 };
 
 export const updateStudent = async (id: string, user: StudentUser): Promise<{ ok: boolean; error?: string }> => {
@@ -292,4 +294,38 @@ export const migrateLocalStorageToServer = async () => {
     localStorage.setItem(MIGRATED_KEY, "true");
     console.log("Migration successful!");
   }
+};
+
+// --- Qualified Students ---
+
+export interface QualifiedStudent {
+  studentId: string;
+  firstName: string;
+  lastName: string;
+}
+
+export const getQualifiedStudents = async (): Promise<QualifiedStudent[]> => {
+  const res = await fetch(`${API_URL}/api/qualified-students`);
+  return res.ok ? await res.json() : [];
+};
+
+export const importQualifiedStudents = async (list: QualifiedStudent[]): Promise<{ ok: boolean; count?: number; error?: string }> => {
+  const res = await fetch(`${API_URL}/api/qualified-students/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(list)
+  });
+  if (res.ok) {
+    const data = await res.json();
+    return { ok: true, count: data.count };
+  }
+  const body = await res.json().catch(() => ({}));
+  return { ok: false, error: body?.error || 'Import failed' };
+};
+
+export const deleteQualifiedStudent = async (studentId: string): Promise<boolean> => {
+  const res = await fetch(`${API_URL}/api/qualified-students/${encodeURIComponent(studentId)}`, {
+    method: 'DELETE'
+  });
+  return res.ok;
 };
