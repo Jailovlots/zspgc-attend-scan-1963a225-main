@@ -258,7 +258,12 @@ const AdminStudents = () => {
             } else {
                 const fn = firstNameColIndex !== -1 ? String(row[firstNameColIndex] ?? "").trim() : "";
                 const ln = lastNameColIndex !== -1 ? String(row[lastNameColIndex] ?? "").trim() : "";
-                name = [fn, ln].filter(Boolean).join(" ");
+                // Format: "LASTNAME, FIRSTNAME"
+                if (ln && fn) {
+                    name = `${ln}, ${fn}`;
+                } else {
+                    name = ln || fn;
+                }
             }
 
             if (!name) continue;
