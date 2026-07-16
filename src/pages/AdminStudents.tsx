@@ -93,45 +93,179 @@ const AdminStudents = () => {
         }
     };
 
+    const parseRawRows = (rows: any[][]): QualifiedStudent[] => {
+        if (!rows || rows.length === 0) return [];
+
+        let studentIdColIndex = 0;
+        let nameColIndex = 1;
+        let headerRowIndex = -1;
+
+        // 1. Scan the first 5 rows to find header columns matching keywords
+        for (let r = 0; r < Math.min(rows.length, 5); r++) {
+            const row = rows[r];
+            if (!row) continue;
+            
+            let idIdx = -1;
+            let nameIdx = -1;
+
+            for (let c = 0; c < row.length; c++) {
+                const val = String(row[c] ?? "").trim().toLowerCase();
+                if (
+                    val === "student id" || 
+                    val === "studentid" || 
+                    val === "id no" || 
+                    val === "id no." || 
+                    val === "id number" || 
+                    val === "id_no" || 
+                    val === "stud no" || 
+                    val === "student no" || 
+                    val === "id"
+                ) {
+                    idIdx = c;
+                } else if (
+                    val === "name" || 
+                    val === "student name" || 
+                    val === "student_name" || 
+                    val === "full name" || 
+                    val === "fullname"
+                ) {
+                    nameIdx = c;
+                }
+            }
+
+            if (idIdx !== -1 && nameIdx !== -1) {
+                studentIdColIndex = idIdx;
+                nameColIndex = nameIdx;
+                headerRowIndex = r;
+                break;
+            }
+        }
+
+        // 2. Heuristics fallback if header row wasn't found (smart guess based on column values)
+        if (headerRowIndex === -1) {
+            let idVotes: Record<number, number> = {};
+            let nameVotes: Record<number, number> = {};
+            let dataRowsCount = 0;
+
+            for (let r = 0; r < Math.min(rows.length, 10); r++) {
+                const row = rows[r];
+                if (!row || row.length < 2) continue;
+
+                // Skip obvious header-looking rows
+                const firstVal = String(row[0] ?? "").trim().toLowerCase();
+                if (firstVal === "student id" || firstVal === "id" || firstVal === "no" || firstVal === "no.") continue;
+
+                dataRowsCount++;
+                for (let c = 0; c < row.length; c++) {
+                    const val = String(row[c] ?? "").trim();
+                    if (!val) continue;
+
+                    const valLower = val.toLowerCase();
+                    const hasSpaces = val.includes(" ");
+                    const isNumberOnly = /^\d+$/.test(val);
+                    const isSmallSerial = isNumberOnly && Number(val) < 2000;
+                    const isGender = valLower === "male" || valLower === "female" || valLower === "m" || valLower === "f";
+                    const hasDigit = /\d/.test(val);
+
+                    // Student ID: typically no spaces, not a small sequential number, not a gender string, has digits, length 4-20
+                    const isLikelyStudentId = !hasSpaces && !isSmallSerial && !isGender && hasDigit && val.length >= 4 && val.length <= 20;
+
+                    if (isLikelyStudentId) {
+                        idVotes[c] = (idVotes[c] || 0) + 1;
+                    }
+
+                    // Name: typically has spaces, contains letters, not a date format, not a gender string, length >= 5
+                    const hasLetters = /[a-zA-Z]/.test(val);
+                    const isDate = /\d{4}-\d{2}-\d{2}/.test(val) || val.includes("/");
+                    const isLikelyName = hasSpaces && hasLetters && !isGender && !isDate && val.length >= 5;
+
+                    if (isLikelyName) {
+                        nameVotes[c] = (nameVotes[c] || 0) + 1;
+                    }
+                }
+            }
+
+            if (dataRowsCount > 0) {
+                let maxIdVotes = 0;
+                let guessedIdCol = 0;
+                for (const colStr in idVotes) {
+                    const col = Number(colStr);
+                    if (idVotes[col] > maxIdVotes) {
+                        maxIdVotes = idVotes[col];
+                        guessedIdCol = col;
+                    }
+                }
+
+                let maxNameVotes = 0;
+                let guessedNameCol = 1;
+                for (const colStr in nameVotes) {
+                    const col = Number(colStr);
+                    if (col !== guessedIdCol && nameVotes[col] > maxNameVotes) {
+                        maxNameVotes = nameVotes[col];
+                        guessedNameCol = col;
+                    }
+                }
+
+                if (maxIdVotes > 0) {
+                    studentIdColIndex = guessedIdCol;
+                }
+                if (maxNameVotes > 0) {
+                    nameColIndex = guessedNameCol;
+                }
+            }
+        }
+
+        // 3. Extract the data using detected column indices
+        const result: QualifiedStudent[] = [];
+        for (let r = 0; r < rows.length; r++) {
+            // Skip the header row if we found one
+            if (r === headerRowIndex) continue;
+
+            const row = rows[r];
+            if (!row) continue;
+
+            const studentId = String(row[studentIdColIndex] ?? "").trim();
+            const name = String(row[nameColIndex] ?? "").trim();
+
+            if (!studentId || !name) continue;
+
+            // Skip any duplicate header row matches
+            const idLower = studentId.toLowerCase();
+            if (
+                idLower === "student id" || 
+                idLower === "studentid" || 
+                idLower === "id" || 
+                idLower === "no" || 
+                idLower === "no."
+            ) {
+                continue;
+            }
+
+            result.push({ studentId, name });
+        }
+
+        return result;
+    };
+
     const parsePastedData = (text: string): QualifiedStudent[] => {
         // Normalise line endings (\r\n, \r, \n → \n) then split
         const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-        const result: QualifiedStudent[] = [];
+        const rows: string[][] = [];
         
         for (let line of lines) {
             // Strip null bytes that can appear in mis-decoded UTF-16 files
             line = line.replace(/\0/g, "").trim();
             if (!line) continue;
             
-            // Skip header row — only when the FIRST COLUMN is a header keyword
-            // (do NOT skip just because the word "name" appears somewhere in the line)
-            const firstColLower = line.split(/[\t,]/)[0].trim().toLowerCase();
-            if (
-                firstColLower === "student id" ||
-                firstColLower === "studentid" ||
-                firstColLower === "id" ||
-                firstColLower === "no" ||
-                firstColLower === "no."
-            ) {
-                continue;
-            }
-            
             // Try splitting by tab first (Excel copy-paste), then comma (CSV)
             let parts = line.split("\t");
             if (parts.length < 2) {
                 parts = line.split(",");
             }
-            
-            if (parts.length >= 2) {
-                const studentId = parts[0].trim();
-                // Everything after the first separator is the student name
-                const name = parts.slice(1).join(",").trim();
-                if (studentId && name) {
-                    result.push({ studentId, name });
-                }
-            }
+            rows.push(parts);
         }
-        return result;
+        
+        return parseRawRows(rows);
     };
 
     const handlePasteChange = (val: string) => {
@@ -144,7 +278,7 @@ const AdminStudents = () => {
         const file = e.target.files?.[0];
         if (!file) return;
         
-        // Reset the input so the same file can be re-uploaded if needed
+        // Reset the uploader input
         e.target.value = "";
 
         const reader = new FileReader();
@@ -153,52 +287,22 @@ const AdminStudents = () => {
             if (!buffer) return;
 
             try {
-                // SheetJS XLSX.read handles both Excel (.xlsx/.xls) and CSV (.csv) formats automatically,
-                // including encoding detection (UTF-8, UTF-16, ANSI, etc.) and quoted commas.
+                // Read sheet data using SheetJS
                 const workbook = XLSX.read(buffer, { type: "array" });
                 const sheetName = workbook.SheetNames[0];
                 const sheet = workbook.Sheets[sheetName];
-                const rows: (string | number | null | undefined)[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+                const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
-                const result: QualifiedStudent[] = [];
-                for (const row of rows) {
-                    if (!row || row.length < 2) continue;
-                    
-                    const studentId = String(row[0] ?? "").trim();
-                    // Join any additional columns into the name (handles first name, last name split sheets too)
-                    const name = row
-                        .slice(1)
-                        .map((c) => String(c ?? "").trim())
-                        .filter(Boolean)
-                        .join(" ")
-                        .trim();
-
-                    if (!studentId || !name) continue;
-
-                    // Skip header rows
-                    const idLower = studentId.toLowerCase();
-                    if (
-                        idLower === "student id" || 
-                        idLower === "studentid" || 
-                        idLower === "id" || 
-                        idLower === "no" || 
-                        idLower === "no."
-                    ) {
-                        continue;
-                    }
-
-                    result.push({ studentId, name });
-                }
-
-                if (result.length > 0) {
-                    setParsedData(result);
-                    toast.success(`Successfully parsed ${result.length} student records from file.`);
+                const parsed = parseRawRows(rows);
+                if (parsed.length > 0) {
+                    setParsedData(parsed);
+                    toast.success(`Successfully parsed ${parsed.length} student records from file.`);
                 } else {
-                    toast.error("No valid records found. Ensure the file has at least 2 columns: Student ID, Name.");
+                    toast.error("No valid records found. Ensure the file has columns for Student ID and Name.");
                 }
             } catch (err) {
                 console.error("File upload parse error:", err);
-                toast.error("Failed to read file. Please make sure it is a valid Excel (.xlsx/.xls) or CSV file.");
+                toast.error("Failed to read file. Please make sure it is a valid Excel or CSV file.");
             }
         };
         reader.readAsArrayBuffer(file);
