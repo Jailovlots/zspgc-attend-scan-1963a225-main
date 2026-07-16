@@ -85,11 +85,7 @@ const AdminSections = () => {
             return;
         }
 
-        if (session.adminRole === "officer") {
-            toast.error("You do not have permission to access the Sections page");
-            navigate("/admin");
-            return;
-        }
+
 
         const init = async () => {
             setIsLoading(true);

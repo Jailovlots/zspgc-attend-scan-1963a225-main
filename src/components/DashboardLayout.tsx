@@ -38,7 +38,7 @@ const officerLinks = [
   { to: "/admin", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/admin/scanner", icon: Camera, label: "Scanner" },
   { to: "/admin/events", icon: Calendar, label: "Events" },
-  { to: "/admin/students", icon: Users, label: "Student Management" },
+  { to: "/admin/sections", icon: LayoutGrid, label: "Sections" },
 ];
 
 const DashboardLayout = ({ children, role, adminRole }: DashboardLayoutProps) => {

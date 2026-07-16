@@ -96,58 +96,83 @@ const AdminStudents = () => {
     const parseRawRows = (rows: any[][]): QualifiedStudent[] => {
         if (!rows || rows.length === 0) return [];
 
-        let studentIdColIndex = 0;
-        let nameColIndex = 1;
+        let studentIdColIndex = -1;
+        let nameColIndex = -1;
+        let firstNameColIndex = -1;
+        let lastNameColIndex = -1;
         let headerRowIndex = -1;
 
         // 1. Scan the first 5 rows to find header columns matching keywords
         for (let r = 0; r < Math.min(rows.length, 5); r++) {
             const row = rows[r];
             if (!row) continue;
-            
+
             let idIdx = -1;
             let nameIdx = -1;
+            let firstIdx = -1;
+            let lastIdx = -1;
 
             for (let c = 0; c < row.length; c++) {
                 const val = String(row[c] ?? "").trim().toLowerCase();
-                
-                const isIdHeader = 
-                    val.includes("student number") || 
-                    val.includes("student_number") || 
-                    val.includes("student id") || 
-                    val.includes("studentid") || 
-                    val.includes("stud id") || 
-                    val.includes("id number") || 
-                    val.includes("id no") || 
-                    val.includes("id_no") || 
-                    val.includes("stud no") || 
-                    val.includes("student no") || 
+
+                const isIdHeader =
+                    val.includes("student number") ||
+                    val.includes("student_number") ||
+                    val.includes("student id") ||
+                    val.includes("studentid") ||
+                    val.includes("stud id") ||
+                    val.includes("id number") ||
+                    val.includes("id no") ||
+                    val.includes("id_no") ||
+                    val.includes("stud no") ||
+                    val.includes("student no") ||
                     val === "id";
 
-                const isNameHeader = 
-                    val.includes("student name") || 
-                    val.includes("student_name") || 
-                    val.includes("full name") || 
-                    val.includes("fullname") || 
-                    val.includes("name of student") || 
+                const isFullNameHeader =
+                    val.includes("student name") ||
+                    val.includes("student_name") ||
+                    val.includes("full name") ||
+                    val.includes("fullname") ||
+                    val.includes("name of student") ||
                     val === "name";
 
-                if (isIdHeader) {
-                    idIdx = c;
-                } else if (isNameHeader) {
-                    nameIdx = c;
-                }
+                // Detect split columns
+                const isFirstNameHeader =
+                    val === "first name" ||
+                    val === "firstname" ||
+                    val === "first_name" ||
+                    val === "given name" ||
+                    val === "givenname";
+
+                const isLastNameHeader =
+                    val === "last name" ||
+                    val === "lastname" ||
+                    val === "last_name" ||
+                    val === "surname" ||
+                    val === "family name" ||
+                    val === "familyname";
+
+                if (isIdHeader) idIdx = c;
+                else if (isFullNameHeader) nameIdx = c;
+                else if (isFirstNameHeader) firstIdx = c;
+                else if (isLastNameHeader) lastIdx = c;
             }
 
-            if (idIdx !== -1 && nameIdx !== -1) {
+            const hasId = idIdx !== -1;
+            const hasFullName = nameIdx !== -1;
+            const hasSplitName = firstIdx !== -1 || lastIdx !== -1;
+
+            if (hasId && (hasFullName || hasSplitName)) {
                 studentIdColIndex = idIdx;
-                nameColIndex = nameIdx;
+                nameColIndex = hasFullName ? nameIdx : -1;
+                firstNameColIndex = firstIdx;
+                lastNameColIndex = lastIdx;
                 headerRowIndex = r;
                 break;
             }
         }
 
-        // 2. Heuristics fallback if header row wasn't found (smart guess based on column values)
+        // 2. Heuristics fallback if header row wasn't found
         if (headerRowIndex === -1) {
             let idVotes: Record<number, number> = {};
             let nameVotes: Record<number, number> = {};
@@ -157,8 +182,6 @@ const AdminStudents = () => {
             for (let r = 0; r < Math.min(rows.length, 10); r++) {
                 const row = rows[r];
                 if (!row || row.length < 2) continue;
-
-                // Skip obvious header-looking rows
                 const firstVal = String(row[0] ?? "").trim().toLowerCase();
                 if (firstVal === "student id" || firstVal === "id" || firstVal === "no" || firstVal === "no.") continue;
 
@@ -166,34 +189,19 @@ const AdminStudents = () => {
                 for (let c = 0; c < row.length; c++) {
                     const val = String(row[c] ?? "").trim();
                     if (!val) continue;
-
                     const valLower = val.toLowerCase();
                     const hasSpaces = val.includes(" ");
                     const isNumberOnly = /^\d+$/.test(val);
                     const isSmallSerial = isNumberOnly && Number(val) < 2000;
-                    
-                    if (isSmallSerial) {
-                        serialColumns.add(c);
-                    }
-
+                    if (isSmallSerial) serialColumns.add(c);
                     const isGender = valLower === "male" || valLower === "female" || valLower === "m" || valLower === "f";
                     const hasDigit = /\d/.test(val);
-
-                    // Student ID: typically no spaces, not a small sequential number, not a gender string, has digits, length 4-20
                     const isLikelyStudentId = !hasSpaces && !isSmallSerial && !isGender && hasDigit && val.length >= 4 && val.length <= 20;
-
-                    if (isLikelyStudentId) {
-                        idVotes[c] = (idVotes[c] || 0) + 1;
-                    }
-
-                    // Name: typically has spaces, contains letters, not a date format, not a gender string, length >= 5, not serial
+                    if (isLikelyStudentId) idVotes[c] = (idVotes[c] || 0) + 1;
                     const hasLetters = /[a-zA-Z]/.test(val);
                     const isDate = /\d{4}-\d{2}-\d{2}/.test(val) || val.includes("/");
-                    const isLikelyName = hasSpaces && hasLetters && !isGender && !isDate && !isSmallSerial && val.length >= 5;
-
-                    if (isLikelyName) {
-                        nameVotes[c] = (nameVotes[c] || 0) + 1;
-                    }
+                    const isLikelyName = hasLetters && !isGender && !isDate && !isSmallSerial && val.length >= 3;
+                    if (isLikelyName) nameVotes[c] = (nameVotes[c] || 0) + 1;
                 }
             }
 
@@ -207,7 +215,6 @@ const AdminStudents = () => {
                         guessedIdCol = col;
                     }
                 }
-
                 let maxNameVotes = 0;
                 let guessedNameCol = -1;
                 for (const colStr in nameVotes) {
@@ -217,58 +224,52 @@ const AdminStudents = () => {
                         guessedNameCol = col;
                     }
                 }
-
-                if (guessedIdCol !== -1) {
-                    studentIdColIndex = guessedIdCol;
-                } else {
-                    // Try to pick first non-serial column
-                    for (let c = 0; c < rows[0].length; c++) {
-                        if (!serialColumns.has(c)) {
-                            studentIdColIndex = c;
-                            break;
-                        }
+                // Fallback: pick first non-serial column for ID
+                if (guessedIdCol === -1) {
+                    for (let c = 0; c < (rows[0]?.length ?? 0); c++) {
+                        if (!serialColumns.has(c)) { guessedIdCol = c; break; }
                     }
                 }
-
-                if (guessedNameCol !== -1) {
-                    nameColIndex = guessedNameCol;
-                } else {
-                    // Try to pick next non-serial column
-                    for (let c = 0; c < rows[0].length; c++) {
-                        if (!serialColumns.has(c) && c !== studentIdColIndex) {
-                            nameColIndex = c;
-                            break;
-                        }
+                // Fallback: pick next non-serial column for name
+                if (guessedNameCol === -1) {
+                    for (let c = 0; c < (rows[0]?.length ?? 0); c++) {
+                        if (!serialColumns.has(c) && c !== guessedIdCol) { guessedNameCol = c; break; }
                     }
                 }
+                studentIdColIndex = guessedIdCol;
+                nameColIndex = guessedNameCol;
             }
         }
 
-        // 3. Extract the data using detected column indices
+        // 3. Extract data using detected column indices
         const result: QualifiedStudent[] = [];
         for (let r = 0; r < rows.length; r++) {
-            // Skip the header row if we found one
             if (r === headerRowIndex) continue;
-
             const row = rows[r];
             if (!row) continue;
 
-            const studentId = String(row[studentIdColIndex] ?? "").trim();
-            const name = String(row[nameColIndex] ?? "").trim();
+            const studentId = studentIdColIndex !== -1 ? String(row[studentIdColIndex] ?? "").trim() : "";
+            if (!studentId) continue;
 
-            if (!studentId || !name) continue;
+            // Build name: prefer full-name column, else join first+last
+            let name = "";
+            if (nameColIndex !== -1) {
+                name = String(row[nameColIndex] ?? "").trim();
+            } else {
+                const fn = firstNameColIndex !== -1 ? String(row[firstNameColIndex] ?? "").trim() : "";
+                const ln = lastNameColIndex !== -1 ? String(row[lastNameColIndex] ?? "").trim() : "";
+                name = [fn, ln].filter(Boolean).join(" ");
+            }
 
-            // Skip any duplicate header row matches
+            if (!name) continue;
+
+            // Skip header rows
             const idLower = studentId.toLowerCase();
             if (
-                idLower === "student id" || 
-                idLower === "studentid" || 
-                idLower === "id" || 
-                idLower === "no" || 
-                idLower === "no."
-            ) {
-                continue;
-            }
+                idLower === "student id" || idLower === "studentid" ||
+                idLower === "student number" || idLower === "id" ||
+                idLower === "no" || idLower === "no."
+            ) continue;
 
             result.push({ studentId, name });
         }
@@ -404,6 +405,12 @@ const AdminStudents = () => {
         if (!session || session.role !== "admin") {
             toast.error("Please log in as an admin to access this page");
             navigate("/login");
+            return;
+        }
+
+        if (session.adminRole === "officer") {
+            toast.error("You do not have permission to access the Students page");
+            navigate("/admin");
             return;
         }
 
