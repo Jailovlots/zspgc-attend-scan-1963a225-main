@@ -44,6 +44,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { getAllStudents, saveUser, deleteUser, StudentUser, getCourseSections, updateStudent, getSession, getQualifiedStudents, importQualifiedStudents, deleteQualifiedStudent, QualifiedStudent } from "@/lib/auth";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import * as XLSX from "xlsx";
 
 const AdminStudents = () => {
     const navigate = useNavigate();
@@ -145,42 +146,85 @@ const AdminStudents = () => {
         // Reset the input so the same file can be re-uploaded if needed
         e.target.value = "";
 
+        const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+
         const reader = new FileReader();
         reader.onload = (event) => {
             const buffer = event.target?.result as ArrayBuffer;
             if (!buffer) return;
 
-            // Auto-detect encoding from BOM
-            const bytes = new Uint8Array(buffer);
-            let encoding = "utf-8";
-            let bomOffset = 0;
+            if (isExcel) {
+                // --- Excel path (SheetJS) ---
+                try {
+                    const workbook = XLSX.read(buffer, { type: "array" });
+                    const sheetName = workbook.SheetNames[0];
+                    const sheet = workbook.Sheets[sheetName];
+                    // Convert sheet to 2-D array of raw values
+                    const rows: (string | number | null | undefined)[][] =
+                        XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
-            if (bytes[0] === 0xFF && bytes[1] === 0xFE) {
-                encoding = "utf-16le";
-                bomOffset = 2;
-            } else if (bytes[0] === 0xFE && bytes[1] === 0xFF) {
-                encoding = "utf-16be";
-                bomOffset = 2;
-            } else if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
-                encoding = "utf-8";
-                bomOffset = 3;
-            }
+                    const result: QualifiedStudent[] = [];
+                    for (const row of rows) {
+                        if (!row || row.length < 2) continue;
+                        const studentId = String(row[0] ?? "").trim();
+                        // Everything from column 2 onwards is joined as the name
+                        const name = row
+                            .slice(1)
+                            .map((c) => String(c ?? "").trim())
+                            .filter(Boolean)
+                            .join(" ")
+                            .trim();
 
-            const slicedBuffer = buffer.slice(bomOffset);
-            let text: string;
-            try {
-                text = new TextDecoder(encoding).decode(slicedBuffer);
-            } catch {
-                // Fallback to utf-8 if the detected encoding fails
-                text = new TextDecoder("utf-8").decode(slicedBuffer);
-            }
+                        if (!studentId || !name) continue;
 
-            const parsed = parsePastedData(text);
-            if (parsed.length > 0) {
-                setParsedData(parsed);
-                toast.success(`Successfully parsed ${parsed.length} student records from CSV file.`);
+                        // Skip header rows
+                        const idLower = studentId.toLowerCase();
+                        if (idLower === "student id" || idLower === "studentid" || idLower === "id" || idLower === "no" || idLower === "no.") continue;
+
+                        result.push({ studentId, name });
+                    }
+
+                    if (result.length > 0) {
+                        setParsedData(result);
+                        toast.success(`Successfully parsed ${result.length} student records from Excel file.`);
+                    } else {
+                        toast.error("No valid records found. Ensure columns are: Student ID, Name.");
+                    }
+                } catch (err) {
+                    toast.error("Failed to read Excel file. Please make sure it is a valid .xlsx or .xls file.");
+                }
             } else {
-                toast.error("No valid records parsed. Ensure format is: Student ID, Name (2 columns, comma or tab separated).");
+                // --- CSV path (BOM-aware) ---
+                const bytes = new Uint8Array(buffer);
+                let encoding = "utf-8";
+                let bomOffset = 0;
+
+                if (bytes[0] === 0xFF && bytes[1] === 0xFE) {
+                    encoding = "utf-16le";
+                    bomOffset = 2;
+                } else if (bytes[0] === 0xFE && bytes[1] === 0xFF) {
+                    encoding = "utf-16be";
+                    bomOffset = 2;
+                } else if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+                    encoding = "utf-8";
+                    bomOffset = 3;
+                }
+
+                const slicedBuffer = buffer.slice(bomOffset);
+                let text: string;
+                try {
+                    text = new TextDecoder(encoding).decode(slicedBuffer);
+                } catch {
+                    text = new TextDecoder("utf-8").decode(slicedBuffer);
+                }
+
+                const parsed = parsePastedData(text);
+                if (parsed.length > 0) {
+                    setParsedData(parsed);
+                    toast.success(`Successfully parsed ${parsed.length} student records from CSV file.`);
+                } else {
+                    toast.error("No valid records parsed. Ensure format is: Student ID, Name (2 columns, comma or tab separated).");
+                }
             }
         };
         reader.readAsArrayBuffer(file);
@@ -656,25 +700,25 @@ const AdminStudents = () => {
                                 <div>
                                     <span className="font-semibold block mb-0.5">Import Format Requirements:</span>
                                     Provide records with two columns: <strong className="text-foreground">Student ID</strong> and <strong className="text-foreground">Student Name</strong>. 
-                                    Columns can be separated by commas (CSV) or tabs (Excel copy-paste). Casing will be normalized automatically.
+                                    Supported file types: <strong className="text-foreground">.xlsx</strong>, <strong className="text-foreground">.xls</strong>, and <strong className="text-foreground">.csv</strong>. Casing will be normalized automatically.
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-3">
-                                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Option A: Upload CSV File</Label>
+                                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Option A: Upload File</Label>
                                     <div className="border border-dashed border-muted-foreground/30 hover:border-gold/50 rounded-lg p-4 transition-colors flex flex-col items-center justify-center gap-2 text-center bg-card">
                                         <Upload className="h-8 w-8 text-muted-foreground/60" />
                                         <div className="text-xs">
                                             <label htmlFor="csv-upload" className="cursor-pointer font-semibold text-gold hover:underline">
-                                                Click to upload CSV
+                                                Click to upload Excel or CSV
                                             </label>
-                                            <p className="text-muted-foreground mt-0.5">or drag and drop here</p>
+                                            <p className="text-muted-foreground mt-0.5">.xlsx &bull; .xls &bull; .csv</p>
                                         </div>
                                         <input 
                                             id="csv-upload" 
                                             type="file" 
-                                            accept=".csv" 
+                                            accept=".xlsx,.xls,.csv" 
                                             className="hidden" 
                                             onChange={handleFileUpload} 
                                         />
