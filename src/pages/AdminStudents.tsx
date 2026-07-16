@@ -110,25 +110,31 @@ const AdminStudents = () => {
 
             for (let c = 0; c < row.length; c++) {
                 const val = String(row[c] ?? "").trim().toLowerCase();
-                if (
-                    val === "student id" || 
-                    val === "studentid" || 
-                    val === "id no" || 
-                    val === "id no." || 
-                    val === "id number" || 
-                    val === "id_no" || 
-                    val === "stud no" || 
-                    val === "student no" || 
-                    val === "id"
-                ) {
+                
+                const isIdHeader = 
+                    val.includes("student number") || 
+                    val.includes("student_number") || 
+                    val.includes("student id") || 
+                    val.includes("studentid") || 
+                    val.includes("stud id") || 
+                    val.includes("id number") || 
+                    val.includes("id no") || 
+                    val.includes("id_no") || 
+                    val.includes("stud no") || 
+                    val.includes("student no") || 
+                    val === "id";
+
+                const isNameHeader = 
+                    val.includes("student name") || 
+                    val.includes("student_name") || 
+                    val.includes("full name") || 
+                    val.includes("fullname") || 
+                    val.includes("name of student") || 
+                    val === "name";
+
+                if (isIdHeader) {
                     idIdx = c;
-                } else if (
-                    val === "name" || 
-                    val === "student name" || 
-                    val === "student_name" || 
-                    val === "full name" || 
-                    val === "fullname"
-                ) {
+                } else if (isNameHeader) {
                     nameIdx = c;
                 }
             }
@@ -145,6 +151,7 @@ const AdminStudents = () => {
         if (headerRowIndex === -1) {
             let idVotes: Record<number, number> = {};
             let nameVotes: Record<number, number> = {};
+            let serialColumns = new Set<number>();
             let dataRowsCount = 0;
 
             for (let r = 0; r < Math.min(rows.length, 10); r++) {
@@ -164,6 +171,11 @@ const AdminStudents = () => {
                     const hasSpaces = val.includes(" ");
                     const isNumberOnly = /^\d+$/.test(val);
                     const isSmallSerial = isNumberOnly && Number(val) < 2000;
+                    
+                    if (isSmallSerial) {
+                        serialColumns.add(c);
+                    }
+
                     const isGender = valLower === "male" || valLower === "female" || valLower === "m" || valLower === "f";
                     const hasDigit = /\d/.test(val);
 
@@ -174,10 +186,10 @@ const AdminStudents = () => {
                         idVotes[c] = (idVotes[c] || 0) + 1;
                     }
 
-                    // Name: typically has spaces, contains letters, not a date format, not a gender string, length >= 5
+                    // Name: typically has spaces, contains letters, not a date format, not a gender string, length >= 5, not serial
                     const hasLetters = /[a-zA-Z]/.test(val);
                     const isDate = /\d{4}-\d{2}-\d{2}/.test(val) || val.includes("/");
-                    const isLikelyName = hasSpaces && hasLetters && !isGender && !isDate && val.length >= 5;
+                    const isLikelyName = hasSpaces && hasLetters && !isGender && !isDate && !isSmallSerial && val.length >= 5;
 
                     if (isLikelyName) {
                         nameVotes[c] = (nameVotes[c] || 0) + 1;
@@ -187,30 +199,47 @@ const AdminStudents = () => {
 
             if (dataRowsCount > 0) {
                 let maxIdVotes = 0;
-                let guessedIdCol = 0;
+                let guessedIdCol = -1;
                 for (const colStr in idVotes) {
                     const col = Number(colStr);
-                    if (idVotes[col] > maxIdVotes) {
+                    if (!serialColumns.has(col) && idVotes[col] > maxIdVotes) {
                         maxIdVotes = idVotes[col];
                         guessedIdCol = col;
                     }
                 }
 
                 let maxNameVotes = 0;
-                let guessedNameCol = 1;
+                let guessedNameCol = -1;
                 for (const colStr in nameVotes) {
                     const col = Number(colStr);
-                    if (col !== guessedIdCol && nameVotes[col] > maxNameVotes) {
+                    if (col !== guessedIdCol && !serialColumns.has(col) && nameVotes[col] > maxNameVotes) {
                         maxNameVotes = nameVotes[col];
                         guessedNameCol = col;
                     }
                 }
 
-                if (maxIdVotes > 0) {
+                if (guessedIdCol !== -1) {
                     studentIdColIndex = guessedIdCol;
+                } else {
+                    // Try to pick first non-serial column
+                    for (let c = 0; c < rows[0].length; c++) {
+                        if (!serialColumns.has(c)) {
+                            studentIdColIndex = c;
+                            break;
+                        }
+                    }
                 }
-                if (maxNameVotes > 0) {
+
+                if (guessedNameCol !== -1) {
                     nameColIndex = guessedNameCol;
+                } else {
+                    // Try to pick next non-serial column
+                    for (let c = 0; c < rows[0].length; c++) {
+                        if (!serialColumns.has(c) && c !== studentIdColIndex) {
+                            nameColIndex = c;
+                            break;
+                        }
+                    }
                 }
             }
         }
