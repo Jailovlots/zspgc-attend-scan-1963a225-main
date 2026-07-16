@@ -92,19 +92,29 @@ const AdminStudents = () => {
     };
 
     const parsePastedData = (text: string): QualifiedStudent[] => {
-        const lines = text.split("\n");
+        // Normalise line endings (\r\n, \r, \n → \n) then split
+        const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
         const result: QualifiedStudent[] = [];
         
         for (let line of lines) {
-            line = line.trim();
+            // Strip null bytes that can appear in mis-decoded UTF-16 files
+            line = line.replace(/\0/g, "").trim();
             if (!line) continue;
             
-            // Skip header row
-            if (line.toLowerCase().includes("student id") || line.toLowerCase().includes("studentid") || line.toLowerCase().includes("name")) {
+            // Skip header row — only when the FIRST COLUMN is a header keyword
+            // (do NOT skip just because the word "name" appears somewhere in the line)
+            const firstColLower = line.split(/[\t,]/)[0].trim().toLowerCase();
+            if (
+                firstColLower === "student id" ||
+                firstColLower === "studentid" ||
+                firstColLower === "id" ||
+                firstColLower === "no" ||
+                firstColLower === "no."
+            ) {
                 continue;
             }
             
-            // Try splitting by tab first, then comma (only 2 columns: ID and Name)
+            // Try splitting by tab first (Excel copy-paste), then comma (CSV)
             let parts = line.split("\t");
             if (parts.length < 2) {
                 parts = line.split(",");
@@ -132,20 +142,48 @@ const AdminStudents = () => {
         const file = e.target.files?.[0];
         if (!file) return;
         
+        // Reset the input so the same file can be re-uploaded if needed
+        e.target.value = "";
+
         const reader = new FileReader();
         reader.onload = (event) => {
-            const text = event.target?.result as string;
-            if (text) {
-                const parsed = parsePastedData(text);
-                if (parsed.length > 0) {
-                    setParsedData(parsed);
-                    toast.success(`Successfully parsed ${parsed.length} student records from CSV file.`);
-                } else {
-                    toast.error("No valid records parsed. Ensure format is: Student ID, Name (2 columns, comma or tab separated).");
-                }
+            const buffer = event.target?.result as ArrayBuffer;
+            if (!buffer) return;
+
+            // Auto-detect encoding from BOM
+            const bytes = new Uint8Array(buffer);
+            let encoding = "utf-8";
+            let bomOffset = 0;
+
+            if (bytes[0] === 0xFF && bytes[1] === 0xFE) {
+                encoding = "utf-16le";
+                bomOffset = 2;
+            } else if (bytes[0] === 0xFE && bytes[1] === 0xFF) {
+                encoding = "utf-16be";
+                bomOffset = 2;
+            } else if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+                encoding = "utf-8";
+                bomOffset = 3;
+            }
+
+            const slicedBuffer = buffer.slice(bomOffset);
+            let text: string;
+            try {
+                text = new TextDecoder(encoding).decode(slicedBuffer);
+            } catch {
+                // Fallback to utf-8 if the detected encoding fails
+                text = new TextDecoder("utf-8").decode(slicedBuffer);
+            }
+
+            const parsed = parsePastedData(text);
+            if (parsed.length > 0) {
+                setParsedData(parsed);
+                toast.success(`Successfully parsed ${parsed.length} student records from CSV file.`);
+            } else {
+                toast.error("No valid records parsed. Ensure format is: Student ID, Name (2 columns, comma or tab separated).");
             }
         };
-        reader.readAsText(file);
+        reader.readAsArrayBuffer(file);
     };
 
     const handleImportConfirm = async () => {
