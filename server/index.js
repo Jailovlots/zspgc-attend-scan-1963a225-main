@@ -181,13 +181,20 @@ app.post('/api/register', async (req, res) => {
       }
 
       const qualified = qualifiedResult.rows[0];
-      const dbFirst = (qualified.firstname || '').trim().toLowerCase();
-      const dbLast = (qualified.lastname || '').trim().toLowerCase();
-      const inputFirst = (u.firstName || '').trim().toLowerCase();
-      const inputLast = (u.lastName || '').trim().toLowerCase();
+      const dbName = (qualified.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const inputFirst = (u.firstName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const inputLast = (u.lastName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const inputFullName = `${inputFirst} ${inputLast}`;
+      const inputFullNameAlt = `${inputLast} ${inputFirst}`;
+      const inputFullNameComma = `${inputLast}, ${inputFirst}`;
+
+      const isMatch = (inputFirst && inputLast && dbName.includes(inputFirst) && dbName.includes(inputLast)) ||
+                      dbName === inputFullName ||
+                      dbName === inputFullNameAlt ||
+                      dbName === inputFullNameComma;
 
       // 2. Verify that both the first name and last name match the qualified record (case-insensitive)
-      if (dbFirst !== inputFirst || dbLast !== inputLast) {
+      if (!isMatch) {
         return res.status(400).json({
           error: `The provided name (${u.firstName} ${u.lastName}) does not match the official record for Student ID "${u.studentId}".`
         });
@@ -239,8 +246,7 @@ app.get('/api/qualified-students', async (req, res) => {
     const result = await db.query('SELECT * FROM qualified_students ORDER BY studentid ASC');
     res.json(result.rows.map(row => ({
       studentId: row.studentid,
-      firstName: row.firstname,
-      lastName: row.lastname
+      name: row.name
     })));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -257,14 +263,14 @@ app.post('/api/qualified-students/import', async (req, res) => {
   try {
     await client.query('BEGIN');
     for (const item of list) {
-      if (!item.studentId || !item.firstName || !item.lastName) {
-        throw new Error(`Invalid record details: ${JSON.stringify(item)}. All fields (studentId, firstName, lastName) are required.`);
+      if (!item.studentId || !item.name) {
+        throw new Error(`Invalid record details: ${JSON.stringify(item)}. All fields (studentId, name) are required.`);
       }
       await client.query(`
-        INSERT INTO qualified_students (studentid, firstname, lastname)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (studentid) DO UPDATE SET firstname = $2, lastname = $3
-      `, [item.studentId.trim(), item.firstName.trim(), item.lastName.trim()]);
+        INSERT INTO qualified_students (studentid, name)
+        VALUES ($1, $2)
+        ON CONFLICT (studentid) DO UPDATE SET name = $2
+      `, [item.studentId.trim(), item.name.trim()]);
     }
     await client.query('COMMIT');
     res.json({ success: true, count: list.length });

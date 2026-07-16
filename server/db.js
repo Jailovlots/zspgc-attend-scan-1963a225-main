@@ -173,13 +173,37 @@ export const initDb = async () => {
       )`,
       `CREATE TABLE IF NOT EXISTS qualified_students (
         studentid TEXT PRIMARY KEY,
-        firstname TEXT NOT NULL,
-        lastname TEXT NOT NULL
+        name TEXT NOT NULL
       )`
     ];
 
     for (const query of otherTables) {
       await db.query(query);
+    }
+
+    // Migration for qualified_students table: firstname + lastname -> name
+    const hasNameCol = await db.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name='qualified_students' AND column_name='name'
+    `);
+    if (hasNameCol.rows.length === 0) {
+      console.log('Migrating qualified_students table to name format...');
+      const cols = await db.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name='qualified_students' AND column_name IN ('firstname', 'lastname')
+      `);
+      if (cols.rows.length > 0) {
+        await db.query(`ALTER TABLE qualified_students ADD COLUMN name TEXT`);
+        await db.query(`UPDATE qualified_students SET name = TRIM(CONCAT(firstname, ' ', lastname))`);
+        await db.query(`ALTER TABLE qualified_students ALTER COLUMN name SET NOT NULL`);
+        await db.query(`ALTER TABLE qualified_students DROP COLUMN firstname`);
+        await db.query(`ALTER TABLE qualified_students DROP COLUMN lastname`);
+        console.log('Migration of qualified_students table completed successfully.');
+      } else {
+        await db.query(`ALTER TABLE qualified_students ADD COLUMN name TEXT NOT NULL`);
+      }
     }
 
     // 5. Initialize default settings if missing

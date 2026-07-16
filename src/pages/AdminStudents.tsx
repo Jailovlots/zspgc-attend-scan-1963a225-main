@@ -100,22 +100,22 @@ const AdminStudents = () => {
             if (!line) continue;
             
             // Skip header row
-            if (line.toLowerCase().includes("student id") || line.toLowerCase().includes("studentid") || line.toLowerCase().includes("first name")) {
+            if (line.toLowerCase().includes("student id") || line.toLowerCase().includes("studentid") || line.toLowerCase().includes("name")) {
                 continue;
             }
             
-            // Try splitting by tab first, then comma
+            // Try splitting by tab first, then comma (only 2 columns: ID and Name)
             let parts = line.split("\t");
-            if (parts.length < 3) {
+            if (parts.length < 2) {
                 parts = line.split(",");
             }
             
-            if (parts.length >= 3) {
+            if (parts.length >= 2) {
                 const studentId = parts[0].trim();
-                const firstName = parts[1].trim();
-                const lastName = parts[2].trim();
-                if (studentId && firstName && lastName) {
-                    result.push({ studentId, firstName, lastName });
+                // Everything after the first separator is the student name
+                const name = parts.slice(1).join(",").trim();
+                if (studentId && name) {
+                    result.push({ studentId, name });
                 }
             }
         }
@@ -141,7 +141,7 @@ const AdminStudents = () => {
                     setParsedData(parsed);
                     toast.success(`Successfully parsed ${parsed.length} student records from CSV file.`);
                 } else {
-                    toast.error("No valid records parsed. Ensure format is: Student ID, First Name, Last Name.");
+                    toast.error("No valid records parsed. Ensure format is: Student ID, Name (2 columns, comma or tab separated).");
                 }
             }
         };
@@ -190,8 +190,7 @@ const AdminStudents = () => {
         return qualifiedStudents.filter((s) => {
             return (
                 (s.studentId ?? "").toLowerCase().includes(qualifiedSearchQuery.toLowerCase()) ||
-                (s.firstName ?? "").toLowerCase().includes(qualifiedSearchQuery.toLowerCase()) ||
-                (s.lastName ?? "").toLowerCase().includes(qualifiedSearchQuery.toLowerCase())
+                (s.name ?? "").toLowerCase().includes(qualifiedSearchQuery.toLowerCase())
             );
         });
     }, [qualifiedStudents, qualifiedSearchQuery]);
@@ -618,7 +617,7 @@ const AdminStudents = () => {
                                 <Info className="h-4 w-4 text-gold shrink-0 mt-0.5" />
                                 <div>
                                     <span className="font-semibold block mb-0.5">Import Format Requirements:</span>
-                                    Provide records with three columns: <strong className="text-foreground">Student ID</strong>, <strong className="text-foreground">First Name</strong>, and <strong className="text-foreground">Last Name</strong>. 
+                                    Provide records with two columns: <strong className="text-foreground">Student ID</strong> and <strong className="text-foreground">Student Name</strong>. 
                                     Columns can be separated by commas (CSV) or tabs (Excel copy-paste). Casing will be normalized automatically.
                                 </div>
                             </div>
@@ -647,7 +646,7 @@ const AdminStudents = () => {
                                 <div className="space-y-3">
                                     <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Option B: Paste Records</Label>
                                     <Textarea
-                                        placeholder="2024-00001, Juan, Dela Cruz&#10;2024-00002, Maria, Santos"
+                                        placeholder="2024-00001, Juan Dela Cruz&#10;2024-00002, Maria Santos"
                                         value={pasteData}
                                         onChange={(e) => handlePasteChange(e.target.value)}
                                         className="h-28 text-xs font-mono"
@@ -668,16 +667,14 @@ const AdminStudents = () => {
                                             <TableHeader className="bg-muted/30 sticky top-0">
                                                 <TableRow>
                                                     <TableHead className="py-1.5 px-3 text-xs">Student ID</TableHead>
-                                                    <TableHead className="py-1.5 px-3 text-xs">First Name</TableHead>
-                                                    <TableHead className="py-1.5 px-3 text-xs">Last Name</TableHead>
+                                                    <TableHead className="py-1.5 px-3 text-xs">Name</TableHead>
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
                                                 {parsedData.map((row, idx) => (
                                                     <TableRow key={idx} className="hover:bg-muted/10">
                                                         <TableCell className="py-1 px-3 font-mono text-xs">{row.studentId}</TableCell>
-                                                        <TableCell className="py-1 px-3 text-xs">{row.firstName}</TableCell>
-                                                        <TableCell className="py-1 px-3 text-xs">{row.lastName}</TableCell>
+                                                        <TableCell className="py-1 px-3 text-xs">{row.name}</TableCell>
                                                     </TableRow>
                                                 ))}
                                             </TableBody>
@@ -718,8 +715,7 @@ const AdminStudents = () => {
                                     <TableHeader className="bg-muted/40 sticky top-0">
                                         <TableRow>
                                             <TableHead className="h-8 px-4 text-xs">Student ID</TableHead>
-                                            <TableHead className="h-8 px-4 text-xs">First Name</TableHead>
-                                            <TableHead className="h-8 px-4 text-xs">Last Name</TableHead>
+                                            <TableHead className="h-8 px-4 text-xs">Name</TableHead>
                                             <TableHead className="h-8 px-4 text-right text-xs">Action</TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -728,8 +724,7 @@ const AdminStudents = () => {
                                             filteredQualifiedStudents.map((row) => (
                                                 <TableRow key={row.studentId} className="hover:bg-muted/20">
                                                     <TableCell className="py-1.5 px-4 font-mono text-xs">{row.studentId}</TableCell>
-                                                    <TableCell className="py-1.5 px-4 text-xs">{row.firstName}</TableCell>
-                                                    <TableCell className="py-1.5 px-4 text-xs">{row.lastName}</TableCell>
+                                                    <TableCell className="py-1.5 px-4 text-xs">{row.name}</TableCell>
                                                     <TableCell className="py-1.5 px-4 text-right">
                                                         <Button 
                                                             variant="ghost" 
@@ -744,7 +739,7 @@ const AdminStudents = () => {
                                             ))
                                         ) : (
                                             <TableRow>
-                                                <TableCell colSpan={4} className="text-center py-8 text-muted-foreground text-xs italic">
+                                                <TableCell colSpan={3} className="text-center py-8 text-muted-foreground text-xs italic">
                                                     No qualified student records found.
                                                 </TableCell>
                                             </TableRow>

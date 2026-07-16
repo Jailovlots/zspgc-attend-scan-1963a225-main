@@ -300,8 +300,7 @@ export const migrateLocalStorageToServer = async () => {
 
 export interface QualifiedStudent {
   studentId: string;
-  firstName: string;
-  lastName: string;
+  name: string;
 }
 
 export const getQualifiedStudents = async (): Promise<QualifiedStudent[]> => {
