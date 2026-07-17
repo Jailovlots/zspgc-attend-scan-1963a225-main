@@ -122,9 +122,9 @@ export const generateEventQrToken = (
   // Use a shorter hash for the visible token but keep it unique
   const hash = btoa(`${studentId}:${eventId}:${timestamp}`).replace(/[^a-zA-Z0-9]/g, '').slice(-8).toUpperCase();
 
-  // Token format: ZDSPGC-STU-{studentId}-EVT-{eventId}-TS-{timestamp}-{hash}
+  // Token format: ZDSPGC-STU-{studentId}-EVTID-{eventId}-TS-{timestamp}-{hash}
   return {
-    token: `ZDSPGC-STU-${studentId}-EVT-${eventId}-TS-${timestamp}-${hash}`,
+    token: `ZDSPGC-STU-${studentId}-EVTID-${eventId}-TS-${timestamp}-${hash}`,
     payload: {
       studentId,
       studentName,
@@ -149,35 +149,44 @@ export const parseEventQrToken = (token: string) => {
   }
 
   // Check if it's the new format with timestamp and hash:
-  // e.g., studentId-EVT-eventId-TS-timestamp-hash
+  // e.g., studentId-EVTID-eventId-TS-timestamp-hash  (new separator, unambiguous)
+  // Also handle legacy -EVT- separator for backward compatibility
   const tsMatch = body.match(/-TS-(\d+)-([A-Za-z0-9]+)$/);
   if (tsMatch) {
     const timestamp = parseInt(tsMatch[1], 10);
     const hash = tsMatch[2];
     const idEvtPart = body.slice(0, body.lastIndexOf('-TS-' + tsMatch[1]));
     
-    // Split at the first "-EVT-"
+    // Try new unambiguous separator first: -EVTID-
+    const evtidIndex = idEvtPart.indexOf('-EVTID-');
+    if (evtidIndex !== -1) {
+      const studentId = idEvtPart.slice(0, evtidIndex).trim();
+      // '-EVTID-' is 7 characters long
+      const eventId = idEvtPart.slice(evtidIndex + 7).trim();
+      if (studentId && eventId) {
+        console.log('[QR Parser] Parsed OK (EVTID):', { studentId, eventId, timestamp });
+        return { studentId, eventId, timestamp, hash };
+      }
+    }
+
+    // Fallback: legacy -EVT- separator
+    // Here eventId itself starts with 'EVT-', so the full pattern is '-EVT-EVT-XXXX'
+    // We find the FIRST '-EVT-' and take everything after it as the eventId
     const evtIndex = idEvtPart.indexOf('-EVT-');
     if (evtIndex !== -1) {
-      let studentId = idEvtPart.slice(0, evtIndex).trim();
-      // Clean up any potential leftover EVT parts just in case
-      if (studentId.includes('-EVT-')) {
-        studentId = studentId.split('-EVT-')[0].trim();
-      }
-      // Since "-EVT-" is 5 characters long, we slice from evtIndex + 5 to get the eventId correctly
+      const studentId = idEvtPart.slice(0, evtIndex).trim();
+      // '-EVT-' is 5 characters; the text after is the eventId (e.g. 'EVT-2025-006')
       const eventId = idEvtPart.slice(evtIndex + 5).trim();
-      
       if (studentId && eventId) {
-        console.log('[QR Parser] Parsed OK:', { studentId, eventId, timestamp });
+        console.log('[QR Parser] Parsed OK (EVT legacy):', { studentId, eventId, timestamp });
         return { studentId, eventId, timestamp, hash };
       }
     }
   }
 
-  // Fallback for legacy format:
+  // Fallback for legacy format with no timestamp:
   // Can be "ZDSPGC-STU-studentId" or just "studentId"
-  // We want to make sure it doesn't contain -EVT- or -TS- to avoid matching a corrupt new token as a student ID
-  if (!body.includes('-EVT-') && !body.includes('-TS-')) {
+  if (!body.includes('-EVTID-') && !body.includes('-EVT-') && !body.includes('-TS-')) {
     const studentId = body.trim();
     if (studentId) {
       return {
