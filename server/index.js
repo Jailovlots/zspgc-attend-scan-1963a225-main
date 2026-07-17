@@ -166,41 +166,6 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/register', async (req, res) => {
   const u = req.body;
   try {
-    // Check if we should enforce qualified student ID validation
-    if (!u.bypassQualification) {
-      // 1. Verify student ID exists in the qualified list
-      const qualifiedResult = await db.query(
-        'SELECT * FROM qualified_students WHERE LOWER(TRIM(studentid)) = LOWER(TRIM($1))',
-        [u.studentId]
-      );
-
-      if (qualifiedResult.rows.length === 0) {
-        return res.status(400).json({
-          error: `Student ID "${u.studentId}" is not in the list of qualified student IDs. Please contact the administrator.`
-        });
-      }
-
-      const qualified = qualifiedResult.rows[0];
-      const dbName = (qualified.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
-      const inputFirst = (u.firstName || '').trim().toLowerCase().replace(/\s+/g, ' ');
-      const inputLast = (u.lastName || '').trim().toLowerCase().replace(/\s+/g, ' ');
-      const inputFullName = `${inputFirst} ${inputLast}`;
-      const inputFullNameAlt = `${inputLast} ${inputFirst}`;
-      const inputFullNameComma = `${inputLast}, ${inputFirst}`;
-
-      const isMatch = (inputFirst && inputLast && dbName.includes(inputFirst) && dbName.includes(inputLast)) ||
-                      dbName === inputFullName ||
-                      dbName === inputFullNameAlt ||
-                      dbName === inputFullNameComma;
-
-      // 2. Verify that both the first name and last name match the qualified record (case-insensitive)
-      if (!isMatch) {
-        return res.status(400).json({
-          error: `The provided name (${u.firstName} ${u.lastName}) does not match the official record for Student ID "${u.studentId}".`
-        });
-      }
-    }
-
     // 3. Check if an account is already registered for this student ID to prevent multiple account creations
     const existingUser = await db.query(
       'SELECT 1 FROM users WHERE LOWER(TRIM(studentid)) = LOWER(TRIM($1))',
