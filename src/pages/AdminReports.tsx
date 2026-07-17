@@ -61,6 +61,9 @@ const AdminReports = () => {
     const [searchQuery, setSearchQuery] = useState("");
     const [courseSections, setCourseSections] = useState<Record<string, Record<string, string[]>>>({});
 
+    // ── Selected event info ────────────────────────────────────────────────────
+    const selectedEvent = events.find((e) => e.id === selectedEventId);
+
     // ── Load data ──────────────────────────────────────────────────────────────
     useEffect(() => {
         if (!session || session.role !== "admin") {
@@ -157,7 +160,7 @@ const AdminReports = () => {
                 time: rec ? rec.time : "—",
             };
         });
-    }, [students, eventAttendance, courseFilter, yearFilter, sectionFilter]);
+    }, [students, eventAttendance, courseFilter, yearFilter, sectionFilter, events, selectedEvent]);
 
     // ── Apply additional filters ───────────────────────────────────────────────
     const filteredRows = useMemo(() => {
@@ -209,9 +212,6 @@ const AdminReports = () => {
         });
         return Object.values(map).sort((a, b) => a.section.localeCompare(b.section));
     }, [studentRows]);
-
-    // ── Selected event info ────────────────────────────────────────────────────
-    const selectedEvent = events.find((e) => e.id === selectedEventId);
 
     // ── CSV Export ─────────────────────────────────────────────────────────────
     const handleExport = () => {
