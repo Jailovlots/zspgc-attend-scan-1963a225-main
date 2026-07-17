@@ -77,8 +77,14 @@ export const getAllStudents = async (): Promise<StudentUser[]> => {
 };
 
 export const getStudentProfile = async (id: string): Promise<StudentUser | null> => {
-  const res = await fetch(`${API_URL}/api/students/${id}`);
-  return res.ok ? await res.json() : null;
+  // URL-encode the student ID so special characters (slashes, spaces, etc.)
+  // don't corrupt the endpoint path, causing false "not found" errors.
+  const res = await fetch(`${API_URL}/api/students/${encodeURIComponent(id.trim())}`);
+  if (res.ok) return await res.json();
+  if (res.status === 404) return null; // Genuine "not found"
+  // For server errors (500, 503, etc.) throw so the caller can show the right message
+  const body = await res.json().catch(() => ({}));
+  throw new Error(body?.error || `Server error ${res.status}`);
 };
 
 export const saveUser = async (user: StudentUser & { bypassQualification?: boolean }): Promise<{ ok: boolean; error?: string }> => {

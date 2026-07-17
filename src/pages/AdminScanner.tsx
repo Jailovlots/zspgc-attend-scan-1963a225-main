@@ -238,14 +238,19 @@ const AdminScanner = () => {
 
       // Parse token (handles standard, prefix-less, and legacy formats)
       const parsed = parseEventQrToken(scannedText);
-      let studentId = parsed?.studentId ?? null;
-      
-      // Safety split: ensure studentId never contains -EVT- parts
-      if (studentId && studentId.includes("-EVT-")) {
-        studentId = studentId.split("-EVT-")[0].trim();
-      }
-      
+      // parseEventQrToken already cleanly extracts studentId — do NOT re-split it.
+      const studentId = parsed?.studentId?.trim() ?? null;
       const eventId = parsed?.eventId ?? "EVT-GENERAL";
+
+      console.log("[Scanner] Parsed QR:", { studentId, eventId, raw: scannedText.slice(0, 80) });
+
+      if (!studentId) {
+        playErrorBeep();
+        toast.error("Invalid QR Code", {
+          description: `This code format is not recognized. Scanned: "${scannedText.slice(0, 100)}${scannedText.length > 100 ? '...' : ''}"`,
+        });
+        return;
+      }
 
       // Security Check: 180 second (3 minute) expiry for tokens to handle minor clock drifts and loading delays
       if (parsed && parsed.timestamp) {
@@ -266,18 +271,10 @@ const AdminScanner = () => {
       const eventName = event?.name ?? "General Attendance";
 
       // Check duplicate: same student + same event — use ref to get latest records without recreating callback
-      if (studentId && scannedRecordsRef.current.some((r) => r.studentId === studentId && r.eventId === eventId)) {
+      if (scannedRecordsRef.current.some((r) => r.studentId.trim().toLowerCase() === studentId.toLowerCase() && r.eventId === eventId)) {
         playErrorBeep();
         toast.warning("Already scanned", {
           description: `Student ${studentId} was already recorded for ${eventName}.`,
-        });
-        return;
-      }
-
-      if (!studentId) {
-        playErrorBeep();
-        toast.error("Invalid QR Code", {
-          description: `This code format is not recognized. Scanned: "${scannedText.slice(0, 100)}${scannedText.length > 100 ? '...' : ''}"`,
         });
         return;
       }
@@ -348,14 +345,15 @@ const AdminScanner = () => {
           } else {
             playErrorBeep();
             toast.error("Student Not Found", {
-              description: `Student ID ${studentId} not found in the database.`,
+              description: `No student with ID "${studentId}" exists in the database. The student may not be registered yet.`,
             });
           }
-        } catch (err) {
+        } catch (err: any) {
           toast.dismiss(fetchingToast);
           playErrorBeep();
-          toast.error("Fetch Error", {
-            description: "Could not retrieve student details from the database.",
+          // Distinguish server error from genuine not-found
+          toast.error("Server Error", {
+            description: err?.message || "Could not reach the database. Please check server connectivity and try again.",
           });
         }
       }
