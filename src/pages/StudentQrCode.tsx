@@ -59,10 +59,13 @@ const StudentQrCode = () => {
     init();
   }, []);
 
-  // Show all upcoming/ongoing events
+  // Filter events relevant to this student's course
   const availableEvents = useMemo(
-    () => events,
-    [events]
+    () =>
+      events.filter(
+        (evt) => evt.targetCourses.length === 0 || evt.targetCourses.includes(student?.course || "")
+      ),
+    [events, student?.course]
   );
 
   const handleGenerateQr = (event: SchoolEvent, quiet = false) => {

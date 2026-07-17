@@ -50,9 +50,10 @@ const StudentDashboard = () => {
           .sort((a, b) => b.timestamp - a.timestamp);
         setHistory(personalHistory);
 
-        // Filter relevant upcoming events (sync filter logic and remove slice limit)
+        // Filter relevant upcoming events — only show events for this student's course or open-to-all
         const relevantEvents = eventsData
           .filter(e => e.status !== "completed")
+          .filter(e => e.targetCourses.length === 0 || e.targetCourses.includes(activeCourse))
           .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         setUpcomingEvents(relevantEvents);
       } catch (err) {
