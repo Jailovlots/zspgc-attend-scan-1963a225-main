@@ -251,19 +251,19 @@ const AdminStudents = () => {
             const studentId = studentIdColIndex !== -1 ? String(row[studentIdColIndex] ?? "").trim() : "";
             if (!studentId) continue;
 
-            // Build name: prefer full-name column, else join first+last
+            // Build name: prefer full-name column, else join first+last.
+            // If firstNameColIndex is present, we combine first and last names even if nameColIndex is also present (since nameColIndex might only contain the last name).
             let name = "";
-            if (nameColIndex !== -1) {
+            const fn = firstNameColIndex !== -1 ? String(row[firstNameColIndex] ?? "").trim() : "";
+            const ln = lastNameColIndex !== -1 ? String(row[lastNameColIndex] ?? "").trim() : 
+                       (nameColIndex !== -1 && nameColIndex !== firstNameColIndex ? String(row[nameColIndex] ?? "").trim() : "");
+
+            if (ln && fn) {
+                name = `${ln}, ${fn}`;
+            } else if (nameColIndex !== -1) {
                 name = String(row[nameColIndex] ?? "").trim();
             } else {
-                const fn = firstNameColIndex !== -1 ? String(row[firstNameColIndex] ?? "").trim() : "";
-                const ln = lastNameColIndex !== -1 ? String(row[lastNameColIndex] ?? "").trim() : "";
-                // Format: "LASTNAME, FIRSTNAME"
-                if (ln && fn) {
-                    name = `${ln}, ${fn}`;
-                } else {
-                    name = ln || fn;
-                }
+                name = ln || fn;
             }
 
             if (!name) continue;
