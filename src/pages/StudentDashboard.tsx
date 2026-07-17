@@ -53,7 +53,6 @@ const StudentDashboard = () => {
         // Filter relevant upcoming events (sync filter logic and remove slice limit)
         const relevantEvents = eventsData
           .filter(e => e.status !== "completed")
-          .filter(e => e.targetCourses.length === 0 || e.targetCourses.includes(activeCourse))
           .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         setUpcomingEvents(relevantEvents);
       } catch (err) {
