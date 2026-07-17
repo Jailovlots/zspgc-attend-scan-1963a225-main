@@ -160,7 +160,7 @@ const AdminScanner = () => {
     // Poll server every 4 seconds to sync scanner entries from phone and other devices
     const interval = setInterval(fetchAttendance, 4000);
     return () => clearInterval(interval);
-  }, [session, navigate]);
+  }, [session?.studentId, navigate]);
 
   const filteredRecords = useMemo(
     () =>
