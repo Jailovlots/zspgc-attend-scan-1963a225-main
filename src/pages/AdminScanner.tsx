@@ -234,15 +234,21 @@ const AdminScanner = () => {
 
       // Parse token (handles standard, prefix-less, and legacy formats)
       const parsed = parseEventQrToken(scannedText);
-      const studentId = parsed?.studentId ?? null;
+      let studentId = parsed?.studentId ?? null;
+      
+      // Safety split: ensure studentId never contains -EVT- parts
+      if (studentId && studentId.includes("-EVT-")) {
+        studentId = studentId.split("-EVT-")[0].trim();
+      }
+      
       const eventId = parsed?.eventId ?? "EVT-GENERAL";
 
-      // Security Check: 10 second expiry for new tokens with clock synchronization
+      // Security Check: 180 second (3 minute) expiry for tokens to handle minor clock drifts and loading delays
       if (parsed && parsed.timestamp) {
         const now = getSyncedTime();
         const ageInSeconds = (now - parsed.timestamp) / 1000;
 
-        if (ageInSeconds > 10 || ageInSeconds < -2) {
+        if (ageInSeconds > 180 || ageInSeconds < -30) {
           playErrorBeep();
           toast.error("QR Code Expired", {
             description: `This code was generated ${Math.round(Math.abs(ageInSeconds))}s ago. Please ask the student to refresh their QR code.`,

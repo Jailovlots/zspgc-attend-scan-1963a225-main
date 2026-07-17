@@ -159,7 +159,11 @@ export const parseEventQrToken = (token: string) => {
     // Split at the first "-EVT-"
     const evtIndex = idEvtPart.indexOf('-EVT-');
     if (evtIndex !== -1) {
-      const studentId = idEvtPart.slice(0, evtIndex).trim();
+      let studentId = idEvtPart.slice(0, evtIndex).trim();
+      // Clean up any potential leftover EVT parts just in case
+      if (studentId.includes('-EVT-')) {
+        studentId = studentId.split('-EVT-')[0].trim();
+      }
       // Since "-EVT-" is 5 characters long, we slice from evtIndex + 5 to get the eventId correctly
       const eventId = idEvtPart.slice(evtIndex + 5).trim();
       
