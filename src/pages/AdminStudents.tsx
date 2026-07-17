@@ -624,8 +624,8 @@ const AdminStudents = () => {
                                     filteredStudents.map((student) => (
                                         <TableRow key={student.studentId} className="hover:bg-muted/30 transition-colors">
                                             <TableCell className="px-6 font-mono font-medium text-sm text-gold">{student.studentId}</TableCell>
-                                            <TableCell className="font-semibold capitalize">{student.lastName}</TableCell>
-                                            <TableCell className="font-semibold capitalize">{student.firstName}</TableCell>
+                                            <TableCell className="font-semibold uppercase">{student.lastName}</TableCell>
+                                            <TableCell className="font-semibold uppercase">{student.firstName}</TableCell>
                                             <TableCell>{student.course}</TableCell>
                                             <TableCell className="text-muted-foreground">{student.yearLevel} • {student.section}</TableCell>
                                             <TableCell>
@@ -716,9 +716,9 @@ const AdminStudents = () => {
                                 <Input
                                     id="lastName"
                                     value={formData.lastName}
-                                    onChange={(e) => updateForm("lastName", e.target.value)}
-                                    placeholder="Dela Cruz"
-                                    className="capitalize"
+                                    onChange={(e) => updateForm("lastName", e.target.value.toUpperCase())}
+                                    placeholder="DELA CRUZ"
+                                    className="uppercase"
                                     required
                                 />
                             </div>
@@ -727,9 +727,9 @@ const AdminStudents = () => {
                                 <Input
                                     id="firstName"
                                     value={formData.firstName}
-                                    onChange={(e) => updateForm("firstName", e.target.value)}
-                                    placeholder="Juan"
-                                    className="capitalize"
+                                    onChange={(e) => updateForm("firstName", e.target.value.toUpperCase())}
+                                    placeholder="JUAN"
+                                    className="uppercase"
                                     required
                                 />
                             </div>

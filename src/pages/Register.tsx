@@ -111,11 +111,11 @@ const Register = () => {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="lastName">Last Name</Label>
-                <Input id="lastName" placeholder="Dela Cruz" value={form.lastName} onChange={(e) => update("lastName", e.target.value)} required className="mt-1.5 capitalize" />
+                <Input id="lastName" placeholder="DELA CRUZ" value={form.lastName} onChange={(e) => update("lastName", e.target.value.toUpperCase())} required className="mt-1.5 uppercase" />
               </div>
               <div>
                 <Label htmlFor="firstName">First Name</Label>
-                <Input id="firstName" placeholder="Juan" value={form.firstName} onChange={(e) => update("firstName", e.target.value)} required className="mt-1.5 capitalize" />
+                <Input id="firstName" placeholder="JUAN" value={form.firstName} onChange={(e) => update("firstName", e.target.value.toUpperCase())} required className="mt-1.5 uppercase" />
               </div>
             </div>
             <div>
