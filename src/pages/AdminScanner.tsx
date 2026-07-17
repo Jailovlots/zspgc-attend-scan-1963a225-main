@@ -284,46 +284,73 @@ const AdminScanner = () => {
 
       console.log("[Scanner] Scanning QR code payload:", decodedText);
 
-      const fetchingToast = toast.loading("Fetching student details for verification...");
-      try {
-        const student = await getStudentProfile(studentId);
-        toast.dismiss(fetchingToast);
+      // Check pre-loaded students in memory first for instantaneous response
+      const cachedStudent = allStudents.find((u) => u.studentId === studentId);
 
-        if (student) {
-          const record: AttendanceRecord = {
-            id: studentId, // In local state, we'll keep id as studentId for backward compat
-            studentId: studentId, 
-            name: `${student.firstName} ${student.lastName}`,
-            course: student.course,
-            section: student.section,
-            gender: student.gender,
-            time: timeStr,
-            status,
-            eventId,
-            eventName,
-            timestamp: now.getTime(),
-          };
+      if (cachedStudent) {
+        const record: AttendanceRecord = {
+          id: studentId,
+          studentId: studentId,
+          name: `${cachedStudent.firstName} ${cachedStudent.lastName}`,
+          course: cachedStudent.course,
+          section: cachedStudent.section,
+          gender: cachedStudent.gender,
+          time: timeStr,
+          status,
+          eventId,
+          eventName,
+          timestamp: now.getTime(),
+        };
 
-          // Save references for confirmation pop-up
-          setScannedStudent(student);
-          setPendingRecord(record);
-          setShowConfirmDialog(true);
-          playBeep(); // Beep to indicate successful scanner read
-        } else {
+        setScannedStudent(cachedStudent);
+        setPendingRecord(record);
+        setShowConfirmDialog(true);
+        playBeep(); // Instant success beep
+      } else {
+        // Fallback to live API fetch if not found in memory (e.g. newly registered during scan session)
+        const fetchingToast = toast.loading("Fetching student details for verification...");
+        try {
+          const student = await getStudentProfile(studentId);
+          toast.dismiss(fetchingToast);
+
+          if (student) {
+            // Add to cache so subsequent scans of this student are also instant
+            setAllStudents((prev) => [...prev, student]);
+
+            const record: AttendanceRecord = {
+              id: studentId,
+              studentId: studentId,
+              name: `${student.firstName} ${student.lastName}`,
+              course: student.course,
+              section: student.section,
+              gender: student.gender,
+              time: timeStr,
+              status,
+              eventId,
+              eventName,
+              timestamp: now.getTime(),
+            };
+
+            setScannedStudent(student);
+            setPendingRecord(record);
+            setShowConfirmDialog(true);
+            playBeep();
+          } else {
+            playErrorBeep();
+            toast.error("Student Not Found", {
+              description: `Student ID ${studentId} not found in the database.`,
+            });
+          }
+        } catch (err) {
+          toast.dismiss(fetchingToast);
           playErrorBeep();
-          toast.error("Student Not Found", {
-            description: `Student ID ${studentId} not found in the database.`,
+          toast.error("Fetch Error", {
+            description: "Could not retrieve student details from the database.",
           });
         }
-      } catch (err) {
-        toast.dismiss(fetchingToast);
-        playErrorBeep();
-        toast.error("Fetch Error", {
-          description: "Could not retrieve student details from the database.",
-        });
       }
     },
-    [scannedRecords, playBeep, playErrorBeep, events, systemSettings.lateThreshold]
+    [scannedRecords, playBeep, playErrorBeep, events, systemSettings.lateThreshold, allStudents]
   );
   
   const handleExport = () => {
