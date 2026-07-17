@@ -141,63 +141,50 @@ export const generateEventQrToken = (
 export const parseEventQrToken = (token: string) => {
   // Always trim whitespace/newlines that scanner hardware can append
   const t = token.trim();
-
-  // Token format: ZDSPGC-STU-{studentId}-EVT-{eventId}-TS-{timestamp}-{hash}
-  //
-  // Problem: studentId and eventId can contain hyphens (e.g. "2023-453", "EVT-2025-001"),
-  // which breaks naive regex splitting.
-  //
-  // Solution: anchor from known fixed landmarks:
-  //   1. Strip the "ZDSPGC-STU-" prefix
-  //   2. Find the LAST occurrence of "-TS-{digits}-{hash}" to extract timestamp + hash
-  //   3. Everything between prefix and "-TS-" contains "{studentId}-EVT-{eventId}"
-  //   4. Split that on the FIRST "-EVT-" to separate studentId from eventId
-
   const prefix = 'ZDSPGC-STU-';
-  if (!t.startsWith(prefix)) {
-    // Legacy fallback for very old tokens without event info
-    const legacyMatch = t.match(/ZDSPGC-STU-([\w-]+)/);
-    if (legacyMatch && !t.includes('-EVT-')) {
+  
+  let body = t;
+  if (body.startsWith(prefix)) {
+    body = body.slice(prefix.length);
+  }
+
+  // Check if it's the new format with timestamp and hash:
+  // e.g., studentId-EVT-eventId-TS-timestamp-hash
+  const tsMatch = body.match(/-TS-(\d+)-([A-Za-z0-9]+)$/);
+  if (tsMatch) {
+    const timestamp = parseInt(tsMatch[1], 10);
+    const hash = tsMatch[2];
+    const idEvtPart = body.slice(0, body.lastIndexOf('-TS-' + tsMatch[1]));
+    
+    // Split at the first "-EVT-"
+    const evtIndex = idEvtPart.indexOf('-EVT-');
+    if (evtIndex !== -1) {
+      const studentId = idEvtPart.slice(0, evtIndex).trim();
+      // Since "-EVT-" is 5 characters long, we slice from evtIndex + 5 to get the eventId correctly
+      const eventId = idEvtPart.slice(evtIndex + 5).trim();
+      
+      if (studentId && eventId) {
+        console.log('[QR Parser] Parsed OK:', { studentId, eventId, timestamp });
+        return { studentId, eventId, timestamp, hash };
+      }
+    }
+  }
+
+  // Fallback for legacy format:
+  // Can be "ZDSPGC-STU-studentId" or just "studentId"
+  // We want to make sure it doesn't contain -EVT- or -TS- to avoid matching a corrupt new token as a student ID
+  if (!body.includes('-EVT-') && !body.includes('-TS-')) {
+    const studentId = body.trim();
+    if (studentId) {
       return {
-        studentId: legacyMatch[1].trim(),
+        studentId,
         eventId: 'EVT-GENERAL',
         timestamp: Date.now(),
         hash: 'LEGACY',
       };
     }
-    return null;
   }
 
-  const body = t.slice(prefix.length); // e.g. "23S1125-EVT-EVT-2025-006-TS-1784264855345-ABCD1234"
-
-  // Find "-TS-{digits}-{hash}" pattern — hash is alphanumeric (upper or lower)
-  const tsMatch = body.match(/-TS-(\d+)-([A-Za-z0-9]+)$/);
-  if (!tsMatch) {
-    console.warn('[QR Parser] tsMatch failed. Body:', body);
-    return null;
-  }
-
-  const timestamp = parseInt(tsMatch[1], 10);
-  const hash = tsMatch[2];
-
-  // Strip the "-TS-...{hash}" tail to get "{studentId}-EVT-{eventId}"
-  const idEvtPart = body.slice(0, body.lastIndexOf('-TS-' + tsMatch[1]));
-
-  // Split on the FIRST occurrence of "-EVT-" to separate studentId from eventId
-  const evtIndex = idEvtPart.indexOf('-EVT-');
-  if (evtIndex === -1) {
-    console.warn('[QR Parser] -EVT- not found. idEvtPart:', idEvtPart);
-    return null;
-  }
-
-  const studentId = idEvtPart.slice(0, evtIndex).trim();
-  const eventId = idEvtPart.slice(evtIndex + 1).trim(); // keeps "EVT-..."
-
-  if (!studentId || !eventId) {
-    console.warn('[QR Parser] Empty studentId or eventId after split.', { studentId, eventId });
-    return null;
-  }
-
-  console.log('[QR Parser] Parsed OK:', { studentId, eventId, timestamp });
-  return { studentId, eventId, timestamp, hash };
+  console.warn('[QR Parser] Failed to parse token:', t);
+  return null;
 };

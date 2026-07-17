@@ -232,13 +232,9 @@ const AdminScanner = () => {
       // Trim whitespace/newlines that scanner hardware can append
       const scannedText = decodedText.trim();
 
-      // Try new event-based format first
+      // Parse token (handles standard, prefix-less, and legacy formats)
       const parsed = parseEventQrToken(scannedText);
-
-      // Fallback: old format ZDSPGC-STU-YYYY-NNNNN (no event, no timestamp)
-      // IMPORTANT: stop before -EVT- so we don't capture the whole payload
-      const legacyMatch = !parsed ? scannedText.match(/ZDSPGC-STU-([\w]+(?:-[\w]+)*)(?=-EVT-|-TS-|$)/) : null;
-      const studentId = parsed?.studentId ?? (legacyMatch ? legacyMatch[1] : null);
+      const studentId = parsed?.studentId ?? null;
       const eventId = parsed?.eventId ?? "EVT-GENERAL";
 
       // Security Check: 10 second expiry for new tokens with clock synchronization
