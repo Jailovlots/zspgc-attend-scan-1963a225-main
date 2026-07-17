@@ -158,65 +158,65 @@ const StudentDashboard = () => {
 
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Upcoming Events */}
-          <div className="lg:col-span-2 space-y-4">
+          <div className="lg:col-span-2 space-y-4 min-w-0">
             <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
               <Calendar className="h-5 w-5 text-gold" />
               Upcoming Events
             </h2>
-            <div className="grid sm:grid-cols-2 gap-4">
-              {upcomingEvents.map((event) => (
-                <Card key={event.id} className="shadow-card overflow-hidden group hover:border-gold/50 transition-colors">
-                  <CardContent className="p-0">
-                    <div className="p-4 space-y-3">
-                      <div className="flex justify-between items-start">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.targetCourses.length > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gold/10 text-gold'
-                          }`}>
-                          {event.targetCourses.length > 0 ? `${event.targetCourses.join(", ")} Special` : 'Open to All'}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.status === 'ongoing' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'
-                          }`}>
-                          {event.status}
-                        </span>
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-foreground group-hover:text-gold transition-colors">{event.name}</h3>
-                        <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{event.description}</p>
-                      </div>
-                      <div className="space-y-1.5 pt-1">
-                        <div className="flex items-center text-xs text-muted-foreground gap-2">
-                          <Calendar className="h-3.5 w-3.5" />
-                          <span>{new Date(event.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+            {upcomingEvents.length === 0 ? (
+              <div className="py-8 text-center border-2 border-dashed rounded-xl border-muted">
+                <Calendar className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+                <p className="text-muted-foreground text-sm">No upcoming events scheduled</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {upcomingEvents.map((event) => (
+                  <Card key={event.id} className="shadow-card overflow-hidden group hover:border-gold/50 transition-colors">
+                    <CardContent className="p-0">
+                      <div className="p-4 space-y-3">
+                        <div className="flex flex-wrap justify-between items-start gap-1">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.targetCourses.length > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gold/10 text-gold'}`}>
+                            {event.targetCourses.length > 0 ? `${event.targetCourses.slice(0, 2).join(", ")}${event.targetCourses.length > 2 ? " +" : ""}` : 'Open to All'}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${event.status === 'ongoing' ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
+                            {event.status}
+                          </span>
                         </div>
-                        <div className="flex items-center text-xs text-muted-foreground gap-2">
-                          <Clock className="h-3.5 w-3.5" />
-                          <span>{event.time}</span>
+                        <div>
+                          <h3 className="font-bold text-foreground group-hover:text-gold transition-colors leading-tight">{event.name}</h3>
+                          <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{event.description}</p>
                         </div>
-                        <div className="flex items-center text-xs text-muted-foreground gap-2">
-                          <MapPin className="h-3.5 w-3.5" />
-                          <span className="truncate">{event.location}</span>
+                        <div className="space-y-1.5 pt-1">
+                          <div className="flex items-center text-xs text-muted-foreground gap-2">
+                            <Calendar className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{new Date(event.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                          </div>
+                          <div className="flex items-center text-xs text-muted-foreground gap-2">
+                            <Clock className="h-3.5 w-3.5 shrink-0" />
+                            <span>{event.time}</span>
+                          </div>
+                          <div className="flex items-center text-xs text-muted-foreground gap-2">
+                            <MapPin className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{event.location}</span>
+                          </div>
                         </div>
+                        <Button
+                          size="sm"
+                          className="w-full bg-gold/10 text-gold hover:bg-gold hover:text-white border-0 mt-2"
+                          onClick={() => navigate(`/student/qr?event=${event.id}`)}
+                        >
+                          Generate QR <ArrowRight className="ml-2 h-3 w-3" />
+                        </Button>
                       </div>
-                      <Button
-                        size="sm"
-                        className="w-full bg-gold/10 text-gold hover:bg-gold hover:text-white border-0 mt-2"
-                        onClick={() => navigate(`/student/qr?event=${event.id}`)}
-                      >
-                        Generate QR <ArrowRight className="ml-2 h-3 w-3" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-              {upcomingEvents.length === 0 && (
-                <div className="col-span-full py-8 text-center border-2 border-dashed rounded-xl border-muted">
-                  <p className="text-muted-foreground text-sm">No upcoming events scheduled</p>
-                </div>
-              )}
-            </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* QR Code */}
-          <Card className="shadow-card h-full">
+          <Card className="shadow-card h-fit">
             <CardHeader className="pb-3 px-6 pt-6">
               <CardTitle className="text-base font-sans">Quick Scanner Access</CardTitle>
             </CardHeader>
