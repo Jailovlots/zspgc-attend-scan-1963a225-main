@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import DashboardLayout from "@/components/DashboardLayout";
 import QrScannerComponent from "@/components/QrScannerComponent";
 import { toast } from "sonner";
-import { getEvents, parseEventQrToken, type SchoolEvent } from "@/data/events";
+import { getEvents, parseEventQrToken, extractStudentIdFromQr, type SchoolEvent } from "@/data/events";
 import { getAllStudents, getSession, getAttendanceRecords, saveAttendanceRecord, clearAttendanceRecords, deleteAttendanceRecords, getSystemSettings, getStudentProfile, type AttendanceRecord, type StudentUser } from "@/lib/auth";
 import { getSyncedTime, syncTimeWithServer } from "@/lib/timeSync";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -236,10 +236,10 @@ const AdminScanner = () => {
       // Trim whitespace/newlines that scanner hardware can append
       const scannedText = decodedText.trim();
 
-      // Parse token (handles standard, prefix-less, and legacy formats)
+      // Parse token for event info; separately extract a clean student ID.
+      // extractStudentIdFromQr() strips ALL noise (-EVTID-, -EVT-, -TS-) regardless of format.
       const parsed = parseEventQrToken(scannedText);
-      // parseEventQrToken already cleanly extracts studentId — do NOT re-split it.
-      const studentId = parsed?.studentId?.trim() ?? null;
+      const studentId = extractStudentIdFromQr(scannedText);
       const eventId = parsed?.eventId ?? "EVT-GENERAL";
 
       console.log("[Scanner] Parsed QR:", { studentId, eventId, raw: scannedText.slice(0, 80) });

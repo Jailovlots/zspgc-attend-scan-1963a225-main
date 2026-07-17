@@ -194,7 +194,44 @@ export const parseEventQrToken = (token: string) => {
     return { studentId: body, eventId: 'EVT-GENERAL', timestamp: Date.now(), hash: 'LEGACY' };
   }
 
-  // ── Step 6: absolute last resort — return whatever we have ──
-  console.warn('[QR] Could not parse cleanly, returning raw body as studentId:', body);
-  return { studentId: body, eventId: 'EVT-GENERAL', timestamp: Date.now(), hash: 'LEGACY' };
+  // ── Step 6: last resort — cleanly extract the student ID portion ──
+  // Do NOT return the raw body (it contains -EVTID-, -EVT-, -TS- noise).
+  const cleanId = extractStudentIdFromQr(t);
+  console.warn('[QR] Fallback extraction, studentId:', cleanId, '| raw:', body);
+  return { studentId: cleanId ?? body, eventId: 'EVT-GENERAL', timestamp: Date.now(), hash: 'LEGACY' };
 };
+
+/**
+ * Extracts ONLY the student ID from a QR token in any format.
+ * Strips the ZDSPGC-STU- prefix and removes any event/timestamp suffixes.
+ *
+ * Supported formats:
+ *   ZDSPGC-STU-{studentId}-EVTID-{eventId}-TS-{timestamp}-{hash}
+ *   ZDSPGC-STU-{studentId}-EVT-{eventId}-TS-{timestamp}-{hash}
+ *   ZDSPGC-STU-{studentId}
+ *   {studentId}  (raw bare ID)
+ */
+export const extractStudentIdFromQr = (token: string): string | null => {
+  const t = token.trim();
+  if (!t) return null;
+
+  // Strip ZDSPGC-STU- prefix
+  let body = t.startsWith('ZDSPGC-STU-') ? t.slice('ZDSPGC-STU-'.length) : t;
+
+  // Strip everything from the first known separator onward
+  // Order: -EVTID- first (new format), then -EVT- (legacy), then -TS- (bare with timestamp)
+  for (const sep of ['-EVTID-', '-EVT-', '-TS-']) {
+    const idx = body.indexOf(sep);
+    if (idx !== -1) {
+      body = body.slice(0, idx);
+    }
+  }
+
+  // Also strip a bare "-EVTID" suffix (without trailing dash) just in case
+  if (body.endsWith('-EVTID')) {
+    body = body.slice(0, body.length - 6);
+  }
+
+  return body.trim() || null;
+};
+
