@@ -138,66 +138,63 @@ export const generateEventQrToken = (
 };
 
 // Parse an event QR token
+// Handles all formats:
+//   NEW:    ZDSPGC-STU-{studentId}-EVTID-{eventId}-TS-{timestamp}-{hash}
+//   LEGACY: ZDSPGC-STU-{studentId}-EVT-{eventId}-TS-{timestamp}-{hash}
+//   BARE:   ZDSPGC-STU-{studentId}  OR just  {studentId}
 export const parseEventQrToken = (token: string) => {
-  // Always trim whitespace/newlines that scanner hardware can append
   const t = token.trim();
-  const prefix = 'ZDSPGC-STU-';
   
-  let body = t;
-  if (body.startsWith(prefix)) {
-    body = body.slice(prefix.length);
-  }
+  // Strip ZDSPGC-STU- prefix if present
+  const body = t.startsWith('ZDSPGC-STU-') ? t.slice('ZDSPGC-STU-'.length) : t;
 
-  // Check if it's the new format with timestamp and hash:
-  // e.g., studentId-EVTID-eventId-TS-timestamp-hash  (new separator, unambiguous)
-  // Also handle legacy -EVT- separator for backward compatibility
-  const tsMatch = body.match(/-TS-(\d+)-([A-Za-z0-9]+)$/);
+  // ── Step 1: extract the trailing -TS-{timestamp}-{hash} block ──
+  // Timestamp is 13 digits (ms since epoch). Hash is 1-16 alphanumeric chars.
+  const tsMatch = body.match(/-TS-(\d{10,})-?([A-Za-z0-9]*)$/);
   if (tsMatch) {
     const timestamp = parseInt(tsMatch[1], 10);
-    const hash = tsMatch[2];
-    const idEvtPart = body.slice(0, body.lastIndexOf('-TS-' + tsMatch[1]));
-    
-    // Try new unambiguous separator first: -EVTID-
-    const evtidIndex = idEvtPart.indexOf('-EVTID-');
-    if (evtidIndex !== -1) {
-      const studentId = idEvtPart.slice(0, evtidIndex).trim();
-      // '-EVTID-' is 7 characters long
-      const eventId = idEvtPart.slice(evtidIndex + 7).trim();
+    const hash = tsMatch[2] || 'LEGACY';
+    // Everything before "-TS-{timestamp}..." is "{studentId}-EVTID-{eventId}" or "{studentId}-EVT-{eventId}"
+    const beforeTs = body.slice(0, body.lastIndexOf('-TS-' + tsMatch[1]));
+
+    // ── Step 2: try -EVTID- separator first (new unambiguous format) ──
+    const evtidIdx = beforeTs.indexOf('-EVTID-');
+    if (evtidIdx !== -1) {
+      const studentId = beforeTs.slice(0, evtidIdx);
+      const eventId   = beforeTs.slice(evtidIdx + 7); // len('-EVTID-') === 7
       if (studentId && eventId) {
-        console.log('[QR Parser] Parsed OK (EVTID):', { studentId, eventId, timestamp });
+        console.log('[QR] EVTID format:', { studentId, eventId, timestamp });
         return { studentId, eventId, timestamp, hash };
       }
     }
 
-    // Fallback: legacy -EVT- separator
-    // Here eventId itself starts with 'EVT-', so the full pattern is '-EVT-EVT-XXXX'
-    // We find the FIRST '-EVT-' and take everything after it as the eventId
-    const evtIndex = idEvtPart.indexOf('-EVT-');
-    if (evtIndex !== -1) {
-      const studentId = idEvtPart.slice(0, evtIndex).trim();
-      // '-EVT-' is 5 characters; the text after is the eventId (e.g. 'EVT-2025-006')
-      const eventId = idEvtPart.slice(evtIndex + 5).trim();
+    // ── Step 3: try -EVT- separator (legacy format) ──
+    // The event ID itself starts with 'EVT-', giving pattern: …-EVT-EVT-XXXX…
+    // So the first occurrence of '-EVT-' is the separator.
+    const evtIdx = beforeTs.indexOf('-EVT-');
+    if (evtIdx !== -1) {
+      const studentId = beforeTs.slice(0, evtIdx);
+      const eventId   = beforeTs.slice(evtIdx + 5); // len('-EVT-') === 5
       if (studentId && eventId) {
-        console.log('[QR Parser] Parsed OK (EVT legacy):', { studentId, eventId, timestamp });
+        console.log('[QR] EVT legacy format:', { studentId, eventId, timestamp });
         return { studentId, eventId, timestamp, hash };
       }
     }
-  }
 
-  // Fallback for legacy format with no timestamp:
-  // Can be "ZDSPGC-STU-studentId" or just "studentId"
-  if (!body.includes('-EVTID-') && !body.includes('-EVT-') && !body.includes('-TS-')) {
-    const studentId = body.trim();
-    if (studentId) {
-      return {
-        studentId,
-        eventId: 'EVT-GENERAL',
-        timestamp: Date.now(),
-        hash: 'LEGACY',
-      };
+    // ── Step 4: no event separator – treat whole beforeTs as studentId ──
+    if (beforeTs) {
+      console.log('[QR] No-event format:', { studentId: beforeTs, timestamp });
+      return { studentId: beforeTs, eventId: 'EVT-GENERAL', timestamp, hash };
     }
   }
 
-  console.warn('[QR Parser] Failed to parse token:', t);
-  return null;
+  // ── Step 5: no timestamp block at all — bare student ID token ──
+  if (body && !body.includes('-EVT-') && !body.includes('-EVTID-') && !body.includes('-TS-')) {
+    console.log('[QR] Bare student ID:', body);
+    return { studentId: body, eventId: 'EVT-GENERAL', timestamp: Date.now(), hash: 'LEGACY' };
+  }
+
+  // ── Step 6: absolute last resort — return whatever we have ──
+  console.warn('[QR] Could not parse cleanly, returning raw body as studentId:', body);
+  return { studentId: body, eventId: 'EVT-GENERAL', timestamp: Date.now(), hash: 'LEGACY' };
 };

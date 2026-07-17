@@ -273,7 +273,7 @@ const AdminScanner = () => {
       if (!studentId) {
         playErrorBeep();
         toast.error("Invalid QR Code", {
-          description: "This code format is not recognized.",
+          description: `This code format is not recognized. Scanned: "${scannedText.slice(0, 100)}${scannedText.length > 100 ? '...' : ''}"`,
         });
         return;
       }
