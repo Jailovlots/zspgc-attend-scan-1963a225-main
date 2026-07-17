@@ -610,7 +610,8 @@ const AdminStudents = () => {
                             <TableHeader className="bg-muted/50">
                                 <TableRow>
                                     <TableHead className="px-6">Student ID</TableHead>
-                                    <TableHead>Full Name</TableHead>
+                                    <TableHead>Last Name</TableHead>
+                                    <TableHead>First Name</TableHead>
                                     <TableHead>Course</TableHead>
                                     <TableHead>Year & Section</TableHead>
                                     <TableHead>Gender</TableHead>
@@ -623,7 +624,8 @@ const AdminStudents = () => {
                                     filteredStudents.map((student) => (
                                         <TableRow key={student.studentId} className="hover:bg-muted/30 transition-colors">
                                             <TableCell className="px-6 font-mono font-medium text-sm text-gold">{student.studentId}</TableCell>
-                                            <TableCell className="font-semibold">{student.firstName} {student.lastName}</TableCell>
+                                            <TableCell className="font-semibold capitalize">{student.lastName}</TableCell>
+                                            <TableCell className="font-semibold capitalize">{student.firstName}</TableCell>
                                             <TableCell>{student.course}</TableCell>
                                             <TableCell className="text-muted-foreground">{student.yearLevel} • {student.section}</TableCell>
                                             <TableCell>
@@ -710,22 +712,24 @@ const AdminStudents = () => {
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
-                                <Label htmlFor="firstName">First Name</Label>
-                                <Input
-                                    id="firstName"
-                                    value={formData.firstName}
-                                    onChange={(e) => updateForm("firstName", e.target.value)}
-                                    placeholder="Juan"
-                                    required
-                                />
-                            </div>
-                            <div className="space-y-1">
                                 <Label htmlFor="lastName">Last Name</Label>
                                 <Input
                                     id="lastName"
                                     value={formData.lastName}
                                     onChange={(e) => updateForm("lastName", e.target.value)}
                                     placeholder="Dela Cruz"
+                                    className="capitalize"
+                                    required
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label htmlFor="firstName">First Name</Label>
+                                <Input
+                                    id="firstName"
+                                    value={formData.firstName}
+                                    onChange={(e) => updateForm("firstName", e.target.value)}
+                                    placeholder="Juan"
+                                    className="capitalize"
                                     required
                                 />
                             </div>

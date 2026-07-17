@@ -110,12 +110,12 @@ const Register = () => {
           <form onSubmit={handleRegister} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="firstName">First Name</Label>
-                <Input id="firstName" placeholder="Juan" value={form.firstName} onChange={(e) => update("firstName", e.target.value)} required className="mt-1.5" />
+                <Label htmlFor="lastName">Last Name</Label>
+                <Input id="lastName" placeholder="Dela Cruz" value={form.lastName} onChange={(e) => update("lastName", e.target.value)} required className="mt-1.5 capitalize" />
               </div>
               <div>
-                <Label htmlFor="lastName">Last Name</Label>
-                <Input id="lastName" placeholder="Dela Cruz" value={form.lastName} onChange={(e) => update("lastName", e.target.value)} required className="mt-1.5" />
+                <Label htmlFor="firstName">First Name</Label>
+                <Input id="firstName" placeholder="Juan" value={form.firstName} onChange={(e) => update("firstName", e.target.value)} required className="mt-1.5 capitalize" />
               </div>
             </div>
             <div>
