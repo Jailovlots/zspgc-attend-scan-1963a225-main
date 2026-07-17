@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { toast } from "sonner";
 
@@ -10,14 +10,26 @@ interface QrScannerComponentProps {
 const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentProps) => {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const isMountedRef = useRef(true);
+  // Use a ref for isStarted so stopScanner always reads the latest value (fixes stale closure bug)
+  const isStartedRef = useRef(false);
   const [isStarted, setIsStarted] = useState(false);
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [isNativeApp, setIsNativeApp] = useState(false);
 
+  // Cooldown ref: prevents the same QR from firing onScanSuccess multiple times per scan
+  const scanCooldownRef = useRef(false);
+
+  // Keep a stable ref to the latest onScanSuccess so the scanner callback never goes stale
+  const onScanSuccessRef = useRef(onScanSuccess);
+  useEffect(() => {
+    onScanSuccessRef.current = onScanSuccess;
+  }, [onScanSuccess]);
+
   useEffect(() => {
     isMountedRef.current = true;
+
     // Check for native app bridge (it may take a moment to inject)
     const checkBridge = () => {
       if ((window as any).ReactNativeWebView) {
@@ -33,7 +45,6 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
           clearInterval(interval);
         }
       }, 500);
-      
       // Stop checking after 10 seconds
       setTimeout(() => clearInterval(interval), 10000);
     }
@@ -59,7 +70,7 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
     // 2. Native Bridge Listener (for mobile app)
     const handleNativeScan = (event: any) => {
       const decodedText = event.detail;
-      onScanSuccess(decodedText);
+      onScanSuccessRef.current(decodedText);
       toast.success("Native scan successful");
     };
 
@@ -75,24 +86,32 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
       window.removeEventListener('nativeScan', handleNativeScan);
       stopScanner();
     };
-  }, [onScanSuccess]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount — onScanSuccess accessed via ref
 
-  // Restoring auto-start effect
+  // Auto-start when a camera is selected (only if not already started)
   useEffect(() => {
-    if (selectedCamera && !isStarted) {
+    if (selectedCamera && !isStartedRef.current) {
       startScanner();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCamera]);
 
   const startScanner = async () => {
     if (!selectedCamera) return;
 
     try {
-      // Clear existing scanner instance if it exists
+      // Clean up any existing scanner instance first
       if (scannerRef.current) {
         try {
-          await scannerRef.current.stop();
+          if (isStartedRef.current) {
+            await scannerRef.current.stop();
+          }
+          scannerRef.current.clear();
         } catch (e) { /* ignore */ }
+        scannerRef.current = null;
+        isStartedRef.current = false;
+        setIsStarted(false);
       }
 
       if (!isMountedRef.current) return;
@@ -104,9 +123,11 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
         }
       });
       scannerRef.current = scanner;
+      // Reset scan cooldown for new session
+      scanCooldownRef.current = false;
 
       const config = {
-        fps: 20, // Increased for smoother scanning
+        fps: 15,
         qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
           const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
           // Clamp the qrbox dimension to at least 50px to prevent the runtime error
@@ -120,14 +141,23 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
         selectedCamera,
         config,
         (decodedText) => {
-          onScanSuccess(decodedText);
+          // Cooldown prevents the same QR from firing multiple times per scan session
+          if (scanCooldownRef.current) return;
+          scanCooldownRef.current = true;
+          // Allow re-scanning after 4 seconds (enough time for admin to confirm or reject)
+          setTimeout(() => {
+            scanCooldownRef.current = false;
+          }, 4000);
+
+          onScanSuccessRef.current(decodedText);
         },
-        (errorMessage) => {
-          // Ignore scan failures
+        (_errorMessage) => {
+          // Ignore per-frame scan failures (normal when no QR is in frame)
         }
       );
-      
+
       if (isMountedRef.current) {
+        isStartedRef.current = true;
         setIsStarted(true);
         setError("");
       }
@@ -141,7 +171,6 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
     }
   };
 
-
   const startNativeScan = () => {
     // Message to Expo mobile app via react-native-webview bridge
     if (isNativeApp) {
@@ -153,19 +182,22 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
     }
   };
 
-  const stopScanner = async () => {
+  const stopScanner = useCallback(async () => {
     if (scannerRef.current) {
       try {
-        if (isStarted) {
+        // Use the ref value (not the state) to avoid stale closure
+        if (isStartedRef.current) {
           await scannerRef.current.stop();
         }
         scannerRef.current.clear();
       } catch (e) {
         console.error("Stop error:", e);
       }
+      scannerRef.current = null;
+      isStartedRef.current = false;
       setIsStarted(false);
     }
-  };
+  }, []);
 
   const refreshCameras = () => {
     setError("");
@@ -177,7 +209,10 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
             (d) => d.label.toLowerCase().includes("back") || d.label.toLowerCase().includes("rear")
           );
           const newCamId = backCam ? backCam.id : devices[0].id;
-          setSelectedCamera(newCamId);
+          // Stop the current scanner then restart with the refreshed camera
+          stopScanner().then(() => {
+            setSelectedCamera(newCamId);
+          });
           toast.success("Cameras refreshed");
         } else {
           setError("No cameras found. Please check connections and permissions.");
@@ -190,13 +225,10 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
   };
 
   const switchCamera = async (cameraId: string) => {
-    if (cameraId === selectedCamera) return;
-    
+    if (cameraId === selectedCamera && isStartedRef.current) return;
+    // Stop first, then update selectedCamera — the useEffect will restart the scanner
+    await stopScanner();
     setSelectedCamera(cameraId);
-    if (isStarted) {
-      await stopScanner();
-      // startScanner will be triggered by the useEffect on selectedCamera
-    }
   };
 
   return (
@@ -221,7 +253,7 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
             {!isNativeApp && (
               <div className="bg-white/50 p-2 rounded-lg border border-destructive/10 text-[10px] space-y-1">
                 <p className="font-bold">⚠️ You are in a Browser (Chrome)</p>
-                <p>Cameras are blocked on "http" addresses. For the native scanner, please use the **Expo Go App** instead of Chrome.</p>
+                <p>Cameras are blocked on "http" addresses. For the native scanner, please use the Expo Go App instead of Chrome.</p>
               </div>
             )}
             

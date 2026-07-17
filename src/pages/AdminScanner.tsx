@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Camera, CheckCircle2, XCircle, Clock, Volume2, CalendarDays, Filter, Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +59,8 @@ const AdminScanner = () => {
   const session = getSession();
   const adminRole = session?.adminRole;
   const [scannedRecords, setScannedRecords] = useState<AttendanceRecord[]>([]);
+  // Keep a stable ref to the latest scannedRecords to avoid recreating handleScanSuccess on every poll
+  const scannedRecordsRef = useRef<AttendanceRecord[]>([]);
   const [lastScan, setLastScan] = useState<AttendanceRecord | null>(null);
   const [scanCount, setScanCount] = useState(0);
   const [selectedEventFilter, setSelectedEventFilter] = useState<string>("all");
@@ -87,6 +89,7 @@ const AdminScanner = () => {
     const fetchAttendance = async () => {
       try {
         const savedRecords = await getAttendanceRecords();
+        scannedRecordsRef.current = savedRecords;
         setScannedRecords(savedRecords);
         setScanCount(savedRecords.length);
         if (savedRecords.length > 0) setLastScan(savedRecords[0]);
@@ -116,6 +119,7 @@ const AdminScanner = () => {
 
         if (results[0].status === "fulfilled") {
           const savedRecords = results[0].value;
+          scannedRecordsRef.current = savedRecords;
           setScannedRecords(savedRecords);
           setScanCount(savedRecords.length);
           if (savedRecords.length > 0) setLastScan(savedRecords[0]);
@@ -261,8 +265,8 @@ const AdminScanner = () => {
       const event = events.find((e) => e.id === eventId);
       const eventName = event?.name ?? "General Attendance";
 
-      // Check duplicate: same student + same event
-      if (studentId && scannedRecords.some((r) => r.studentId === studentId && r.eventId === eventId)) {
+      // Check duplicate: same student + same event — use ref to get latest records without recreating callback
+      if (studentId && scannedRecordsRef.current.some((r) => r.studentId === studentId && r.eventId === eventId)) {
         playErrorBeep();
         toast.warning("Already scanned", {
           description: `Student ${studentId} was already recorded for ${eventName}.`,
@@ -356,7 +360,8 @@ const AdminScanner = () => {
         }
       }
     },
-    [scannedRecords, playBeep, playErrorBeep, events, systemSettings.lateThreshold, allStudents]
+    // Note: scannedRecords removed from deps — we use scannedRecordsRef to prevent scanner re-init on every poll
+    [playBeep, playErrorBeep, events, systemSettings.lateThreshold, allStudents]
   );
   
   const handleExport = () => {
@@ -693,7 +698,11 @@ const AdminScanner = () => {
                         const result = await saveAttendanceRecord(pendingRecord);
                         if (result.ok) {
                           playBeep();
-                          setScannedRecords((prev) => [pendingRecord, ...prev]);
+                          setScannedRecords((prev) => {
+                            const updated = [pendingRecord, ...prev];
+                            scannedRecordsRef.current = updated;
+                            return updated;
+                          });
                           setLastScan(pendingRecord);
                           setScanCount((c) => c + 1);
                           toast.success(`✅ Recorded: ${pendingRecord.name}`, {

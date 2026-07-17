@@ -62,6 +62,8 @@ export default function HomeScreen() {
 
   const [permission, requestPermission] = useCameraPermissions();
   const [useNativeScanner, setUseNativeScanner] = useState(false);
+  // Keep a ref in sync with state to avoid stale closures in callbacks
+  const useNativeScannerRef = useRef(false);
   const [bridgeReady, setBridgeReady] = useState(false);
   const [webViewError, setWebViewError] = useState<string | null>(null);
   const [webViewLoading, setWebViewLoading] = useState(true);
@@ -69,6 +71,12 @@ export default function HomeScreen() {
   const webViewRef = useRef<WebView>(null);
   // Cooldown ref – prevents the same QR being sent multiple times in quick succession
   const scanCooldownRef = useRef(false);
+
+  // Helper that updates both state and the ref together
+  const setNativeScanner = (active: boolean) => {
+    useNativeScannerRef.current = active;
+    setUseNativeScanner(active);
+  };
 
   // ── Request camera permissions on first render ──────────────────────────
   useEffect(() => {
@@ -81,7 +89,8 @@ export default function HomeScreen() {
 
   // ── Handle a barcode detected by the native camera ──────────────────────
   const onBarcodeScanned = useCallback((result: BarcodeScanningResult) => {
-    if (!useNativeScanner || !webViewRef.current) return;
+    // Use the ref (not state) to avoid stale closure — this value is always current
+    if (!useNativeScannerRef.current || !webViewRef.current) return;
     if (scanCooldownRef.current) return; // ignore repeated frames
 
     const data = result.data;
@@ -94,7 +103,7 @@ export default function HomeScreen() {
     }, 3000);
 
     // Close the native scanner overlay
-    setUseNativeScanner(false);
+    setNativeScanner(false);
 
     // Safely inject the scan result into the web app's window event system
     const safeData = escapeForJs(data);
@@ -109,7 +118,7 @@ export default function HomeScreen() {
       true; // required for Android injectJavaScript
     `;
     webViewRef.current.injectJavaScript(script);
-  }, [useNativeScanner]);
+  }, []); // No state deps needed — we use refs for current values
 
   // ── Handle messages from the WebView (React app → native) ───────────────
   const onWebViewMessage = useCallback((event: WebViewMessageEvent) => {
@@ -121,7 +130,7 @@ export default function HomeScreen() {
           // Only open the native scanner if we have permission
           if (permission?.granted) {
             scanCooldownRef.current = false; // reset cooldown for new scan session
-            setUseNativeScanner(true);
+            setNativeScanner(true);
           } else {
             requestPermission();
           }
@@ -214,7 +223,7 @@ export default function HomeScreen() {
               style={styles.cancelBtn}
               onPress={() => {
                 scanCooldownRef.current = false;
-                setUseNativeScanner(false);
+                setNativeScanner(false);
               }}
               activeOpacity={0.8}
             >
