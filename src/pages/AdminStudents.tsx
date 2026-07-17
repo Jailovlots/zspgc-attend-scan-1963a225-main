@@ -224,6 +224,15 @@ const AdminStudents = () => {
                         guessedNameCol = col;
                     }
                 }
+                let maxSecondNameVotes = 0;
+                let guessedSecondNameCol = -1;
+                for (const colStr in nameVotes) {
+                    const col = Number(colStr);
+                    if (col !== guessedIdCol && col !== guessedNameCol && !serialColumns.has(col) && nameVotes[col] > maxSecondNameVotes) {
+                        maxSecondNameVotes = nameVotes[col];
+                        guessedSecondNameCol = col;
+                    }
+                }
                 // Fallback: pick first non-serial column for ID
                 if (guessedIdCol === -1) {
                     for (let c = 0; c < (rows[0]?.length ?? 0); c++) {
@@ -237,7 +246,12 @@ const AdminStudents = () => {
                     }
                 }
                 studentIdColIndex = guessedIdCol;
-                nameColIndex = guessedNameCol;
+                if (guessedSecondNameCol !== -1) {
+                    lastNameColIndex = Math.min(guessedNameCol, guessedSecondNameCol);
+                    firstNameColIndex = Math.max(guessedNameCol, guessedSecondNameCol);
+                } else {
+                    nameColIndex = guessedNameCol;
+                }
             }
         }
 
