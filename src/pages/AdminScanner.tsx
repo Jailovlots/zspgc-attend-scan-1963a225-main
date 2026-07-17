@@ -227,11 +227,15 @@ const AdminScanner = () => {
 
   const handleScanSuccess = useCallback(
     async (decodedText: string) => {
-      // Try new event-based format first
-      const parsed = parseEventQrToken(decodedText);
+      // Trim whitespace/newlines that scanner hardware can append
+      const scannedText = decodedText.trim();
 
-      // Fallback: old format ZDSPGC-STU-YYYY-NNNNN-XXXXXXXX
-      const legacyMatch = !parsed ? decodedText.match(/ZDSPGC-STU-([\w-]+)/) : null;
+      // Try new event-based format first
+      const parsed = parseEventQrToken(scannedText);
+
+      // Fallback: old format ZDSPGC-STU-YYYY-NNNNN (no event, no timestamp)
+      // IMPORTANT: stop before -EVT- so we don't capture the whole payload
+      const legacyMatch = !parsed ? scannedText.match(/ZDSPGC-STU-([\w]+(?:-[\w]+)*)(?=-EVT-|-TS-|$)/) : null;
       const studentId = parsed?.studentId ?? (legacyMatch ? legacyMatch[1] : null);
       const eventId = parsed?.eventId ?? "EVT-GENERAL";
 
