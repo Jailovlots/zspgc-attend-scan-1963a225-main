@@ -185,7 +185,9 @@ const AdminScanner = () => {
   }, [selectedIds]);
 
   const findStudent = (id: string) => {
-    const student = allStudents.find((u) => u.studentId === id);
+    const student = allStudents.find(
+      (u) => (u.studentId || "").trim().toLowerCase() === id.trim().toLowerCase()
+    );
     if (student) {
       return {
         name: `${student.firstName} ${student.lastName}`,
@@ -285,7 +287,9 @@ const AdminScanner = () => {
       console.log("[Scanner] Scanning QR code payload:", decodedText);
 
       // Check pre-loaded students in memory first for instantaneous response
-      const cachedStudent = allStudents.find((u) => u.studentId === studentId);
+      const cachedStudent = allStudents.find(
+        (u) => (u.studentId || "").trim().toLowerCase() === studentId.trim().toLowerCase()
+      );
 
       if (cachedStudent) {
         const record: AttendanceRecord = {

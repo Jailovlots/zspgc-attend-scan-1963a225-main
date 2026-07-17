@@ -222,7 +222,7 @@ app.post('/api/register', async (req, res) => {
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
     `, [
-      u.studentId, u.firstName, u.lastName, u.middleName || '', u.suffix || '', u.email || '',
+      u.studentId.trim().toUpperCase(), u.firstName, u.lastName, u.middleName || '', u.suffix || '', u.email || '',
       u.course, u.yearLevel, u.section, u.gender, u.phone || '', u.birthday || '',
       u.address || '', u.city || '', u.province || '', u.zipCode || '', u.semester || '', u.schoolYear || '',
       u.guardianName || '', u.guardianPhone || '', u.guardianRelation || '',
@@ -270,7 +270,7 @@ app.post('/api/qualified-students/import', async (req, res) => {
         INSERT INTO qualified_students (studentid, name)
         VALUES ($1, $2)
         ON CONFLICT (studentid) DO UPDATE SET name = $2
-      `, [item.studentId.trim(), item.name.trim()]);
+      `, [item.studentId.trim().toUpperCase(), item.name.trim()]);
     }
     await client.query('COMMIT');
     res.json({ success: true, count: list.length });
@@ -353,22 +353,23 @@ app.get('/api/students/:id', async (req, res) => {
 app.put('/api/students/:id', async (req, res) => {
   const { id } = req.params;   // original studentId
   const u = req.body;
-  const newId = u.studentId || id;  // new studentId (may be same or different)
+  const newId = (u.studentId || id).trim().toUpperCase();
+  const oldId = id.trim().toUpperCase();
 
   const client = await db.connect();
   try {
     await client.query('BEGIN');
 
     // If the studentId is changing, handle FK constraints first
-    if (newId !== id) {
+    if (newId !== oldId) {
       // Check the new ID isn't already taken by another student
-      const conflict = await client.query('SELECT 1 FROM users WHERE studentid = $1', [newId]);
+      const conflict = await client.query('SELECT 1 FROM users WHERE LOWER(TRIM(studentid)) = LOWER(TRIM($1))', [newId]);
       if (conflict.rows.length > 0) {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: `Student ID "${newId}" is already in use.` });
       }
       // Reassign attendance records to the new ID before updating PK
-      await client.query('UPDATE attendance SET studentid = $1 WHERE studentid = $2', [newId, id]);
+      await client.query('UPDATE attendance SET studentid = $1 WHERE LOWER(TRIM(studentid)) = LOWER(TRIM($2))', [newId, oldId]);
     }
 
     // Update the student record (including the PK if it changed)
@@ -380,7 +381,7 @@ app.put('/api/students/:id', async (req, res) => {
         birthday = $12, address = $13, city = $14, province = $15, zipcode = $16,
         semester = $17, schoolyear = $18, guardianname = $19,
         guardianphone = $20, guardianrelation = $21, password = $22
-      WHERE studentid = $23
+      WHERE LOWER(TRIM(studentid)) = LOWER(TRIM($23))
     `, [
       newId,
       u.firstName, u.lastName, u.middleName || '', u.suffix || '', u.email || '',
@@ -388,7 +389,7 @@ app.put('/api/students/:id', async (req, res) => {
       u.birthday || '', u.address || '', u.city || '', u.province || '', u.zipCode || '',
       u.semester || '', u.schoolYear || '', u.guardianName || '',
       u.guardianPhone || '', u.guardianRelation || '', u.password,
-      id
+      oldId
     ]);
 
     await client.query('COMMIT');
