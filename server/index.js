@@ -619,20 +619,32 @@ app.get('/api/attendance', async (req, res) => {
 
 app.post('/api/attendance', async (req, res) => {
   const r = req.body;
-  console.log('[API] POST /api/attendance request payload:', r);
+  // Normalize studentId to UPPERCASE so it always matches the users table PK
+  const studentId = (r.studentId || r.id || '').trim().toUpperCase();
+  console.log('[API] POST /api/attendance →', studentId, '| event:', r.eventId);
   try {
+    // Use INSERT ... ON CONFLICT DO NOTHING to silently skip duplicate student+event pairs
     const result = await db.query(`
       INSERT INTO attendance (studentid, name, course, section, gender, time, status, eventid, eventname, timestamp)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT DO NOTHING
       RETURNING *
-    `, [r.studentId || r.id, r.name, r.course, r.section, r.gender, r.time, r.status, r.eventId, r.eventName, r.timestamp]);
-    console.log('[API] Successfully recorded attendance for:', r.studentId || r.id);
-    res.json(mapAttendance(result.rows[0]));
+    `, [studentId, r.name, r.course, r.section, r.gender, r.time, r.status, r.eventId, r.eventName, r.timestamp]);
+
+    if (result.rows.length > 0) {
+      console.log('[API] Attendance saved, db id:', result.rows[0].id);
+      res.json({ ok: true, record: mapAttendance(result.rows[0]) });
+    } else {
+      // Row already existed (duplicate) — treat as success
+      console.log('[API] Duplicate attendance record ignored for:', studentId, r.eventId);
+      res.json({ ok: true, duplicate: true });
+    }
   } catch (err) {
-    console.error('[API] Error saving attendance to DB:', err);
-    res.status(400).json({ error: err.message });
+    console.error('[API] Error saving attendance to DB:', err.message);
+    res.status(400).json({ ok: false, error: err.message });
   }
 });
+
 
 app.delete('/api/attendance/clear', async (req, res) => {
   try {

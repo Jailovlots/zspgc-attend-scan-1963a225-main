@@ -153,8 +153,7 @@ export const initDb = async () => {
         status TEXT NOT NULL,
         eventid TEXT NOT NULL,
         eventname TEXT NOT NULL,
-        timestamp BIGINT NOT NULL,
-        FOREIGN KEY(studentid) REFERENCES users(studentid)
+        timestamp BIGINT NOT NULL
       )`,
       `CREATE TABLE IF NOT EXISTS courses (
         id SERIAL PRIMARY KEY,
@@ -181,7 +180,43 @@ export const initDb = async () => {
       await db.query(query);
     }
 
+    // --- Migration: Drop FK constraint on attendance (was blocking inserts on case mismatch) ---
+    try {
+      // Find and drop any FK constraint on attendance.studentid
+      const fkResult = await db.query(`
+        SELECT tc.constraint_name
+        FROM information_schema.table_constraints AS tc
+        JOIN information_schema.key_column_usage AS kcu
+          ON tc.constraint_name = kcu.constraint_name
+        WHERE tc.table_name = 'attendance'
+          AND tc.constraint_type = 'FOREIGN KEY'
+          AND kcu.column_name = 'studentid'
+      `);
+      for (const row of fkResult.rows) {
+        await db.query(`ALTER TABLE attendance DROP CONSTRAINT IF EXISTS "${row.constraint_name}"`);
+        console.log(`Dropped FK constraint "${row.constraint_name}" from attendance table`);
+      }
+    } catch (e) {
+      console.log('Skip FK constraint drop (already clean):', e.message);
+    }
+
+    // --- Migration: Add unique constraint on (studentid, eventid) to prevent duplicate scans ---
+    try {
+      await db.query(`
+        ALTER TABLE attendance
+        ADD CONSTRAINT attendance_studentid_eventid_unique
+        UNIQUE (studentid, eventid)
+      `);
+      console.log('Added unique(studentid, eventid) constraint to attendance table');
+    } catch (e) {
+      // Constraint already exists — that's fine
+      if (!e.message.includes('already exists')) {
+        console.log('Skip unique constraint add:', e.message);
+      }
+    }
+
     // Migration for qualified_students table: firstname + lastname -> name
+
     const hasNameCol = await db.query(`
       SELECT column_name 
       FROM information_schema.columns 
