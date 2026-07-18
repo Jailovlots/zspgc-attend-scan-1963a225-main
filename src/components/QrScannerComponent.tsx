@@ -117,10 +117,7 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
       if (!isMountedRef.current) return;
 
       const scanner = new Html5Qrcode("qr-reader", {
-        verbose: false,
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true
-        }
+        verbose: false
       });
       scannerRef.current = scanner;
       // Reset scan cooldown for new session
@@ -141,14 +138,19 @@ const QrScannerComponent = ({ onScanSuccess, onScanError }: QrScannerComponentPr
         selectedCamera,
         config,
         (decodedText) => {
+          console.log("[Scanner Component] Decoded text:", decodedText);
           // Cooldown prevents the same QR from firing multiple times per scan session
-          if (scanCooldownRef.current) return;
+          if (scanCooldownRef.current) {
+            console.log("[Scanner Component] Ignored due to cooldown");
+            return;
+          }
           scanCooldownRef.current = true;
           // Allow re-scanning after 4 seconds (enough time for admin to confirm or reject)
           setTimeout(() => {
             scanCooldownRef.current = false;
           }, 4000);
 
+          console.log("[Scanner Component] Calling onScanSuccessRef.current with:", decodedText);
           onScanSuccessRef.current(decodedText);
         },
         (_errorMessage) => {

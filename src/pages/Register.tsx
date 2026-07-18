@@ -1,13 +1,13 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import bsisLogo from "@/assets/bsis-logo.png";
-import { saveUser, getCourseSections } from "@/lib/auth";
+import { saveUser, getCourseSections, getQualifiedStudents } from "@/lib/auth";
 
 const Register = () => {
   const [form, setForm] = useState({
@@ -25,16 +25,42 @@ const Register = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [courseSections, setCourseSections] = useState<Record<string, Record<string, string[]>>>({});
+  // Qualified student ID check state
+  const [qualifiedIds, setQualifiedIds] = useState<Set<string>>(new Set());
+  const [qualifiedListActive, setQualifiedListActive] = useState(false);
+  const [idStatus, setIdStatus] = useState<"idle" | "valid" | "invalid">("idle");
+  const idCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    const loadSections = async () => {
-      const sections = await getCourseSections();
+    const load = async () => {
+      const [sections, qualified] = await Promise.all([
+        getCourseSections(),
+        getQualifiedStudents()
+      ]);
       setCourseSections(sections);
+      if (qualified.length > 0) {
+        setQualifiedListActive(true);
+        setQualifiedIds(new Set(qualified.map(q => q.studentId.trim().toUpperCase())));
+      }
     };
-    loadSections();
+    load();
   }, []);
+
+  // Debounced validation of the student ID field against the qualified list
+  const handleStudentIdChange = (value: string) => {
+    update("studentId", value);
+    if (idCheckTimer.current) clearTimeout(idCheckTimer.current);
+    if (!qualifiedListActive || !value.trim()) {
+      setIdStatus("idle");
+      return;
+    }
+    idCheckTimer.current = setTimeout(() => {
+      const normalized = value.trim().toUpperCase();
+      setIdStatus(qualifiedIds.has(normalized) ? "valid" : "invalid");
+    }, 400);
+  };
 
   const availableSections = useMemo(() => {
     if (form.course && form.yearLevel) {
@@ -62,6 +88,12 @@ const Register = () => {
 
     if (!form.course || !form.yearLevel || !form.section || !form.gender) {
       toast({ title: "Error", description: "Please complete your educational and personal details.", variant: "destructive" });
+      return;
+    }
+
+    // Block if student ID is explicitly flagged as not qualified
+    if (qualifiedListActive && idStatus === "invalid") {
+      toast({ title: "Not Qualified", description: `Student ID "${form.studentId}" is not in the approved list. Contact your administrator.`, variant: "destructive" });
       return;
     }
 
@@ -126,7 +158,28 @@ const Register = () => {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="studentId">Student ID</Label>
-                <Input id="studentId" placeholder="2024-00001" value={form.studentId} onChange={(e) => update("studentId", e.target.value)} required className="mt-1.5" />
+                <div className="relative mt-1.5">
+                  <Input
+                    id="studentId"
+                    placeholder="2024-00001"
+                    value={form.studentId}
+                    onChange={(e) => handleStudentIdChange(e.target.value)}
+                    required
+                    className={idStatus === "valid" ? "border-green-500 pr-9" : idStatus === "invalid" ? "border-destructive pr-9" : ""}
+                  />
+                  {idStatus === "valid" && <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-green-500" />}
+                  {idStatus === "invalid" && <XCircle className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-destructive" />}
+                </div>
+                {idStatus === "invalid" && (
+                  <p className="text-[11px] text-destructive mt-1 flex items-center gap-1">
+                    <XCircle className="h-3 w-3" /> This ID is not on the qualified list. Contact your admin.
+                  </p>
+                )}
+                {idStatus === "valid" && (
+                  <p className="text-[11px] text-green-600 mt-1 flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> Student ID is approved for registration.
+                  </p>
+                )}
               </div>
               <div>
                 <Label htmlFor="course">Course</Label>

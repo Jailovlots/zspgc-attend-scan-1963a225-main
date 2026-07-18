@@ -166,7 +166,23 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/register', async (req, res) => {
   const u = req.body;
   try {
-    // 3. Check if an account is already registered for this student ID to prevent multiple account creations
+    // 1. Check if qualification list is active — if so, student ID must be on the list
+    const qualifiedCount = await db.query('SELECT COUNT(*) FROM qualified_students');
+    const listIsActive = parseInt(qualifiedCount.rows[0].count, 10) > 0;
+
+    if (listIsActive) {
+      const qualifiedCheck = await db.query(
+        'SELECT name FROM qualified_students WHERE LOWER(TRIM(studentid)) = LOWER(TRIM($1))',
+        [u.studentId]
+      );
+      if (qualifiedCheck.rows.length === 0) {
+        return res.status(403).json({
+          error: `Student ID "${u.studentId}" is not in the qualified list. Only pre-approved students may register. Please contact your administrator.`
+        });
+      }
+    }
+
+    // 2. Check if an account is already registered for this student ID to prevent multiple account creations
     const existingUser = await db.query(
       'SELECT 1 FROM users WHERE LOWER(TRIM(studentid)) = LOWER(TRIM($1))',
       [u.studentId]
@@ -204,6 +220,7 @@ app.post('/api/register', async (req, res) => {
     }
   }
 });
+
 
 // --- Qualified Students API ---
 app.get('/api/qualified-students', async (req, res) => {

@@ -233,6 +233,7 @@ const AdminScanner = () => {
 
   const handleScanSuccess = useCallback(
     async (decodedText: string) => {
+      console.log("[AdminScanner] handleScanSuccess entered with:", decodedText);
       // Trim whitespace/newlines that scanner hardware can append
       const scannedText = decodedText.trim();
 
@@ -295,6 +296,7 @@ const AdminScanner = () => {
       );
 
       if (cachedStudent) {
+        console.log("[AdminScanner] Found cached student:", cachedStudent);
         const record: AttendanceRecord = {
           id: studentId,
           studentId: studentId,
@@ -311,13 +313,16 @@ const AdminScanner = () => {
 
         setScannedStudent(cachedStudent);
         setPendingRecord(record);
+        console.log("[AdminScanner] Setting showConfirmDialog to true (cached)");
         setShowConfirmDialog(true);
         playBeep(); // Instant success beep
       } else {
+        console.log("[AdminScanner] Student not cached, fetching profile for:", studentId);
         // Fallback to live API fetch if not found in memory (e.g. newly registered during scan session)
         const fetchingToast = toast.loading("Fetching student details for verification...");
         try {
           const student = await getStudentProfile(studentId);
+          console.log("[AdminScanner] Live fetch student result:", student);
           toast.dismiss(fetchingToast);
 
           if (student) {
@@ -340,15 +345,18 @@ const AdminScanner = () => {
 
             setScannedStudent(student);
             setPendingRecord(record);
+            console.log("[AdminScanner] Setting showConfirmDialog to true (live fetch)");
             setShowConfirmDialog(true);
             playBeep();
           } else {
+            console.log("[AdminScanner] Live fetch student returned null");
             playErrorBeep();
             toast.error("Student Not Found", {
               description: `No student with ID "${studentId}" exists in the database. The student may not be registered yet.`,
             });
           }
         } catch (err: any) {
+          console.error("[AdminScanner] Live fetch error:", err);
           toast.dismiss(fetchingToast);
           playErrorBeep();
           // Distinguish server error from genuine not-found
@@ -626,112 +634,7 @@ const AdminScanner = () => {
               </AlertDialogContent>
             </AlertDialog>
 
-            {/* Student Identity Verification Pop-up Confirmation */}
-            <AlertDialog open={showConfirmDialog} onOpenChange={(open) => {
-              if (!open) {
-                setShowConfirmDialog(false);
-                setScannedStudent(null);
-                setPendingRecord(null);
-              }
-            }}>
-              <AlertDialogContent className="max-w-md bg-card border-border shadow-2xl rounded-2xl overflow-hidden p-0">
-                {/* Header Banner */}
-                <div className="h-20 bg-gradient-to-r from-primary to-primary/80 flex items-center justify-between px-6">
-                  <h3 className="text-lg font-display font-bold text-white flex items-center gap-2">
-                    <CheckCircle2 className="h-5 w-5 text-gold" />
-                    Verify Student Identity
-                  </h3>
-                  <Badge className="bg-gold/20 text-gold border-gold/40">
-                    Scan Confirmed
-                  </Badge>
-                </div>
-                
-                <div className="p-6 space-y-6 flex flex-col items-center">
-                  {/* Photo & Name Only */}
-                  <div className="flex flex-col items-center text-center space-y-4 my-2">
-                    <div className="w-64 h-64 border-4 border-card shadow-xl ring-4 ring-gold/20 relative rounded-2xl overflow-hidden bg-muted flex items-center justify-center">
-                      {scannedStudent?.profileImage ? (
-                        <img 
-                          src={scannedStudent.profileImage} 
-                          alt="Profile photo" 
-                          className="h-full w-full object-contain" 
-                        />
-                      ) : (
-                        <div className="bg-gradient-to-br from-gold to-amber-600 text-white text-5xl font-bold w-full h-full flex items-center justify-center">
-                          {scannedStudent ? `${scannedStudent.firstName[0]}${scannedStudent.lastName[0]}` : "ST"}
-                        </div>
-                      )}
-                    </div>
-                    
-                    <h4 className="text-2xl font-bold text-foreground text-center mt-2">
-                      {scannedStudent?.firstName} {scannedStudent?.middleName ? `${scannedStudent.middleName[0]}. ` : ""}{scannedStudent?.lastName} {scannedStudent?.suffix || ""}
-                    </h4>
-                  </div>
-                </div>
 
-                
-                {/* Actions */}
-                <AlertDialogFooter className="p-4 bg-muted/20 border-t border-border flex sm:flex-row gap-2">
-                  <AlertDialogCancel 
-                    onClick={() => {
-                      playErrorBeep();
-                      toast.error("Deny Confirmation", {
-                        description: "Attendance scan rejected by officer."
-                      });
-                      setShowConfirmDialog(false);
-                      setScannedStudent(null);
-                      setPendingRecord(null);
-                    }}
-                    className="flex-1 border-border/80 hover:bg-muted text-foreground"
-                    disabled={isSavingRecord}
-                  >
-                    Deny / Reject
-                  </AlertDialogCancel>
-                  <AlertDialogAction 
-                    onClick={async (e) => {
-                      e.preventDefault();
-                      if (!pendingRecord) return;
-                      setIsSavingRecord(true);
-                      try {
-                        const result = await saveAttendanceRecord(pendingRecord);
-                        if (result.ok) {
-                          playBeep();
-                          setScannedRecords((prev) => {
-                            const updated = [pendingRecord, ...prev];
-                            scannedRecordsRef.current = updated;
-                            return updated;
-                          });
-                          setLastScan(pendingRecord);
-                          setScanCount((c) => c + 1);
-                          toast.success(`✅ Recorded: ${pendingRecord.name}`, {
-                            description: `${pendingRecord.eventName} • ${pendingRecord.status} at ${pendingRecord.time}`,
-                          });
-                          setShowConfirmDialog(false);
-                          setScannedStudent(null);
-                          setPendingRecord(null);
-                        } else {
-                          playErrorBeep();
-                          toast.error("Database Save Failed", {
-                            description: result.error || "Could not save the attendance record.",
-                          });
-                        }
-                      } catch (err) {
-                        playErrorBeep();
-                        toast.error("Network Error", {
-                          description: "An error occurred while connecting to the database."
-                        });
-                      } finally {
-                        setIsSavingRecord(false);
-                      }
-                    }} 
-                    className="flex-1 bg-success hover:bg-success/90 text-success-foreground"
-                    disabled={isSavingRecord}
-                  >
-                    {isSavingRecord ? "Recording..." : "Confirm & Save"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
 
             <CardContent>
               <Table>
@@ -793,6 +696,112 @@ const AdminScanner = () => {
           </Card>
         )}
       </div>
+
+      {/* Student Identity Verification Pop-up Confirmation — outside scannedRecords conditional so it always mounts */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={(open) => {
+        if (!open) {
+          setShowConfirmDialog(false);
+          setScannedStudent(null);
+          setPendingRecord(null);
+        }
+      }}>
+        <AlertDialogContent className="max-w-md bg-card border-border shadow-2xl rounded-2xl overflow-hidden p-0">
+          {/* Header Banner */}
+          <div className="h-20 bg-gradient-to-r from-primary to-primary/80 flex items-center justify-between px-6">
+            <h3 className="text-lg font-display font-bold text-white flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-gold" />
+              Verify Student Identity
+            </h3>
+            <Badge className="bg-gold/20 text-gold border-gold/40">
+              Scan Confirmed
+            </Badge>
+          </div>
+
+          <div className="p-6 space-y-6 flex flex-col items-center">
+            {/* Photo & Name Only */}
+            <div className="flex flex-col items-center text-center space-y-4 my-2">
+              <div className="w-64 h-64 border-4 border-card shadow-xl ring-4 ring-gold/20 relative rounded-2xl overflow-hidden bg-muted flex items-center justify-center">
+                {scannedStudent?.profileImage ? (
+                  <img
+                    src={scannedStudent.profileImage}
+                    alt="Profile photo"
+                    className="h-full w-full object-contain"
+                  />
+                ) : (
+                  <div className="bg-gradient-to-br from-gold to-amber-600 text-white text-5xl font-bold w-full h-full flex items-center justify-center">
+                    {scannedStudent ? `${scannedStudent.firstName[0]}${scannedStudent.lastName[0]}` : "ST"}
+                  </div>
+                )}
+              </div>
+
+              <h4 className="text-2xl font-bold text-foreground text-center mt-2">
+                {scannedStudent?.firstName} {scannedStudent?.middleName ? `${scannedStudent.middleName[0]}. ` : ""}{scannedStudent?.lastName} {scannedStudent?.suffix || ""}
+              </h4>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <AlertDialogFooter className="p-4 bg-muted/20 border-t border-border flex sm:flex-row gap-2">
+            <AlertDialogCancel
+              onClick={() => {
+                playErrorBeep();
+                toast.error("Deny Confirmation", {
+                  description: "Attendance scan rejected by officer."
+                });
+                setShowConfirmDialog(false);
+                setScannedStudent(null);
+                setPendingRecord(null);
+              }}
+              className="flex-1 border-border/80 hover:bg-muted text-foreground"
+              disabled={isSavingRecord}
+            >
+              Deny / Reject
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async (e) => {
+                e.preventDefault();
+                if (!pendingRecord) return;
+                setIsSavingRecord(true);
+                try {
+                  const result = await saveAttendanceRecord(pendingRecord);
+                  if (result.ok) {
+                    playBeep();
+                    setScannedRecords((prev) => {
+                      const updated = [pendingRecord, ...prev];
+                      scannedRecordsRef.current = updated;
+                      return updated;
+                    });
+                    setLastScan(pendingRecord);
+                    setScanCount((c) => c + 1);
+                    toast.success(`✅ Recorded: ${pendingRecord.name}`, {
+                      description: `${pendingRecord.eventName} • ${pendingRecord.status} at ${pendingRecord.time}`,
+                    });
+                    setShowConfirmDialog(false);
+                    setScannedStudent(null);
+                    setPendingRecord(null);
+                  } else {
+                    playErrorBeep();
+                    toast.error("Database Save Failed", {
+                      description: result.error || "Could not save the attendance record.",
+                    });
+                  }
+                } catch (err) {
+                  playErrorBeep();
+                  toast.error("Network Error", {
+                    description: "An error occurred while connecting to the database."
+                  });
+                } finally {
+                  setIsSavingRecord(false);
+                }
+              }}
+              className="flex-1 bg-success hover:bg-success/90 text-success-foreground"
+              disabled={isSavingRecord}
+            >
+              {isSavingRecord ? "Recording..." : "Confirm & Save"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 };
