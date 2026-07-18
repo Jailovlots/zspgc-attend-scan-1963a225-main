@@ -1,8 +1,9 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
   LogOut, LayoutDashboard, QrCode, ClipboardList, User,
   Camera, Users, BarChart3, Settings, Calendar, LayoutGrid, Shield, UserCheck,
+  MoreHorizontal
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import zdspgcLogo from "@/assets/school-logo.jpg";
@@ -44,6 +45,7 @@ const officerLinks = [
 const DashboardLayout = ({ children, role, adminRole }: DashboardLayoutProps) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
 
   // Determine nav links based on role + adminRole
   let links = studentLinks;
@@ -165,24 +167,98 @@ const DashboardLayout = ({ children, role, adminRole }: DashboardLayoutProps) =>
           </Button>
         </header>
 
-        {/* Mobile bottom nav (first 4 links) */}
+        {/* Mobile bottom nav with kebab menu for overflow */}
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border flex">
-          {links.slice(0, 4).map((link) => {
-            const active = location.pathname === link.to;
-            return (
-              <Link
-                key={link.to}
-                to={link.to}
+          {links.length <= 4 ? (
+            links.map((link) => {
+              const active = location.pathname === link.to;
+              return (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  className={`flex-1 flex flex-col items-center py-2.5 text-xs font-medium ${
+                    active ? "text-gold" : "text-muted-foreground"
+                  }`}
+                >
+                  <link.icon className="h-5 w-5 mb-0.5" />
+                  {link.label}
+                </Link>
+              );
+            })
+          ) : (
+            <>
+              {/* Show first 3 links */}
+              {links.slice(0, 3).map((link) => {
+                const active = location.pathname === link.to;
+                return (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    className={`flex-1 flex flex-col items-center py-2.5 text-xs font-medium ${
+                      active ? "text-gold" : "text-muted-foreground"
+                    }`}
+                  >
+                    <link.icon className="h-5 w-5 mb-0.5" />
+                    {link.label}
+                  </Link>
+                );
+              })}
+              {/* More / Kebab Menu trigger */}
+              <button
+                onClick={() => setIsMoreOpen(!isMoreOpen)}
                 className={`flex-1 flex flex-col items-center py-2.5 text-xs font-medium ${
-                  active ? "text-gold" : "text-muted-foreground"
+                  isMoreOpen ? "text-gold" : "text-muted-foreground"
                 }`}
               >
-                <link.icon className="h-5 w-5 mb-0.5" />
-                {link.label}
-              </Link>
-            );
-          })}
+                <MoreHorizontal className="h-5 w-5 mb-0.5" />
+                More
+              </button>
+            </>
+          )}
         </nav>
+
+        {/* Kebab Slide-up Drawer */}
+        {isMoreOpen && links.length > 4 && (
+          <>
+            {/* Backdrop */}
+            <div
+              className="md:hidden fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+              onClick={() => setIsMoreOpen(false)}
+            />
+            {/* Slide-up panel */}
+            <div className="md:hidden fixed bottom-[53px] left-0 right-0 z-50 bg-card border-t border-border rounded-t-2xl shadow-2xl p-4 animate-in slide-in-from-bottom duration-250">
+              <div className="flex justify-between items-center pb-2.5 border-b border-border/60 mb-4">
+                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Administration Panel Options</span>
+                <button
+                  onClick={() => setIsMoreOpen(false)}
+                  className="text-xs font-semibold text-gold hover:underline"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {links.slice(3).map((link) => {
+                  const active = location.pathname === link.to;
+                  return (
+                    <Link
+                      key={link.to}
+                      to={link.to}
+                      onClick={() => setIsMoreOpen(false)}
+                      className={`flex flex-col items-center p-3 rounded-xl text-xs font-medium transition-colors ${
+                        active
+                          ? "bg-gold/10 text-gold"
+                          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                      }`}
+                    >
+                      <link.icon className="h-5.5 w-5.5 mb-2" />
+                      <span className="text-center truncate w-full text-[11px]">{link.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
 
         <main className="flex-1 p-4 md:p-8 pb-20 md:pb-8 overflow-auto">{children}</main>
       </div>
