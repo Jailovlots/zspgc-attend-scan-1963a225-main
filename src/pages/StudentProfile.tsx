@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import DashboardLayout from "@/components/DashboardLayout";
 import { toast } from "sonner";
-import { getSession, setSession, updateStudent, getStudentProfile, StudentUser, updateStudentAvatar } from "@/lib/auth";
+import { getSession, setSession, updateStudent, getStudentProfile, StudentUser, updateStudentAvatar, getSystemSettings } from "@/lib/auth";
 import { useNavigate } from "react-router-dom";
 
 interface StudentInfo extends StudentUser {
@@ -182,6 +182,8 @@ const StudentProfile = () => {
   const [editData, setEditData] = useState<StudentInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [systemSemester, setSystemSemester] = useState("");
+  const [systemSchoolYear, setSystemSchoolYear] = useState("");
 
   // Avatar / profile picture
   const [avatarUrl, setAvatarUrl] = useState<string>("");
@@ -211,7 +213,17 @@ const StudentProfile = () => {
     const loadProfile = async () => {
       setIsLoading(true);
       try {
-        const fullProfile = await getStudentProfile(session.studentId);
+        // Fetch system settings and student profile in parallel
+        const [sysSettings, fullProfile] = await Promise.all([
+          getSystemSettings(),
+          getStudentProfile(session.studentId),
+        ]);
+
+        // Use system settings as the authoritative source for semester/schoolYear
+        const activeSemester = sysSettings?.semester ? `${sysSettings.semester} Semester` : "";
+        const activeSchoolYear = sysSettings?.academicYear || "";
+        if (activeSemester) setSystemSemester(activeSemester);
+        if (activeSchoolYear) setSystemSchoolYear(activeSchoolYear);
         if (fullProfile) {
           const profile: StudentInfo = {
             ...fullProfile,
@@ -224,8 +236,8 @@ const StudentProfile = () => {
             city: fullProfile.city || "",
             province: fullProfile.province || "",
             zipCode: fullProfile.zipCode || "",
-            semester: fullProfile.semester || "2nd Semester",
-            schoolYear: fullProfile.schoolYear || "2024-2025",
+            semester: activeSemester || fullProfile.semester || "",
+            schoolYear: activeSchoolYear || fullProfile.schoolYear || "",
             guardianName: fullProfile.guardianName || "",
             guardianPhone: fullProfile.guardianPhone || "",
             guardianRelation: fullProfile.guardianRelation || "",
@@ -250,8 +262,8 @@ const StudentProfile = () => {
             city: sessionData.city || "",
             province: sessionData.province || "",
             zipCode: sessionData.zipCode || "",
-            semester: sessionData.semester || "2nd Semester",
-            schoolYear: sessionData.schoolYear || "2024-2025",
+            semester: activeSemester || sessionData.semester || "",
+            schoolYear: activeSchoolYear || sessionData.schoolYear || "",
             guardianName: sessionData.guardianName || "",
             guardianPhone: sessionData.guardianPhone || "",
             guardianRelation: sessionData.guardianRelation || "",
@@ -681,8 +693,8 @@ const StudentProfile = () => {
                 <InfoField label="Section" value={student.section} field="section" editable={false} {...fieldProps} />
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <InfoField label="Semester" value={student.semester} field="semester" editable={false} {...fieldProps} />
-                <InfoField label="School Year" value={student.schoolYear} field="schoolYear" editable={false} {...fieldProps} />
+                <InfoField label="Semester" value={systemSemester || student.semester} field="semester" editable={false} {...fieldProps} />
+                <InfoField label="School Year" value={systemSchoolYear || student.schoolYear} field="schoolYear" editable={false} {...fieldProps} />
               </div>
             </CardContent>
           </Card>
