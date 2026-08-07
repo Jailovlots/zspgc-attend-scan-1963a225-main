@@ -253,19 +253,6 @@ const AdminScanner = () => {
         return;
       }
 
-      // Security Check: 180 second (3 minute) expiry for tokens to handle minor clock drifts and loading delays
-      if (parsed && parsed.timestamp) {
-        const now = getSyncedTime();
-        const ageInSeconds = (now - parsed.timestamp) / 1000;
-
-        if (ageInSeconds > 180 || ageInSeconds < -30) {
-          playErrorBeep();
-          toast.error("QR Code Expired", {
-            description: `This code was generated ${Math.round(Math.abs(ageInSeconds))}s ago. Please ask the student to refresh their QR code.`,
-          });
-          return;
-        }
-      }
 
       // Resolve event
       const event = events.find((e) => e.id === eventId);

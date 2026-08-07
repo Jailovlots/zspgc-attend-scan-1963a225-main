@@ -19,7 +19,7 @@ const StudentQrCode = () => {
   const [selectedEvent, setSelectedEvent] = useState<SchoolEvent | null>(null);
   const [events, setEvents] = useState<SchoolEvent[]>([]);
   const [generatedTokens, setGeneratedTokens] = useState<Record<string, { token: string; payload: any }>>({});
-  const [countdown, setCountdown] = useState(10);
+
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -77,7 +77,6 @@ const StudentQrCode = () => {
       event.name
     );
     setGeneratedTokens((prev) => ({ ...prev, [event.id]: result }));
-    setCountdown(10);
     if (!quiet) {
       toast.success(`QR Code generated for ${event.name}`);
     }
@@ -94,22 +93,7 @@ const StudentQrCode = () => {
     }
   }, [searchParams, availableEvents]);
 
-  // Handle auto-refresh every 10 seconds for the selected event
-  useEffect(() => {
-    if (!selectedEvent) return;
 
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          handleGenerateQr(selectedEvent, true);
-          return 10;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [selectedEvent]);
 
   if (!student || isLoading) {
     return (
@@ -229,13 +213,7 @@ const StudentQrCode = () => {
                           level="H"
                           includeMargin={true}
                         />
-                        <div className="absolute -top-3 -right-3 h-10 w-10 rounded-full bg-gold text-gold-foreground flex items-center justify-center font-bold text-sm shadow-lg border-2 border-white">
-                          {countdown}s
-                        </div>
                       </div>
-                      <p className="text-[10px] uppercase tracking-widest text-gold font-bold animate-pulse">
-                        Refreshing Security Token
-                      </p>
 
                       {/* Token details */}
                       <div className="w-full space-y-2 text-xs">
